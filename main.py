@@ -45,50 +45,49 @@ def tool_describe(input_str: str) -> str:
 
 tools = [tool_schema, tool_nulls, tool_describe]
 
-if MODEL == "GPT":
-    # --- 2) Initialize LLM ---
-    from langchain_openai import OpenAI
-    llm = OpenAI(model="gpt-4", temperature=0.1)
-else:
-    from langchain_community.chat_models import ChatOllama
-    llm = ChatOllama(model="llama3.1:8b", temperature=0.1)
+# --- 2) Initialize LLM ---
+from langchain_community.chat_models import ChatOllama
+llm = ChatOllama(model="llama3.2", temperature=0.1)
 
+# --- 3) Create ReAct Agent ---
+from langchain.agents import create_react_agent, AgentExecutor
+from langchain_core.prompts import PromptTemplate
 
+# ReAct prompt template
+react_template = """Answer the following question as best you can. You have access to the following tools:
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+{tools}
 
-SYSTEM_PROMPT = (
-    "You are a data-focused assistant. "
-    "If a question requires information from the CSV, first use an appropriate tool. "
-    "Use only one tool call per step if possible. "
-    "Answer concisely and in a structured way. "
-    "If no tool fits, briefly explain why.\n\n"
-    "Available tools:\n{tools}\n"
-    "Use only these tools: {tool_names}."
-)
+Use the following format:
 
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", SYSTEM_PROMPT),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ]
-)
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
 
-_tool_desc = "\n".join(f"- {t.name}: {t.description}" for t in tools)
-_tool_names = ", ".join(t.name for t in tools)
-prompt = prompt.partial(tools=_tool_desc, tool_names=_tool_names)
+IMPORTANT: After you see an Observation, you MUST either:
+- Do another Action if you need more information, OR
+- Provide a Final Answer if you have enough information
 
+Begin!
 
-# --- 5) Create & Run Tool-Calling Agent ---
-from langchain.agents import create_tool_calling_agent, AgentExecutor
+Question: {input}
+Thought:{agent_scratchpad}"""
 
-agent = create_tool_calling_agent(llm=llm, tools=tools, prompt=prompt)
+react_prompt = PromptTemplate.from_template(react_template)
+agent = create_react_agent(llm=llm, tools=tools, prompt=react_prompt)
+
 agent_executor = AgentExecutor(
     agent=agent,
     tools=tools,
-    verbose=False,   # optional: True for debug logs
-    max_iterations=3,
+    verbose=True,
+    max_iterations=5,
+    handle_parsing_errors=True,
+    early_stopping_method="generate",
 )
 
 if __name__ == "__main__":
