@@ -5,6 +5,9 @@ from dotenv import load_dotenv
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# --- Configuration ---
+MODEL = "OLLAMA"  # Options: "GPT" or "OLLAMA" (default)
+
 # --- 0) Loading CSV ---
 DF_PATH = "titanic.csv"
 df = pd.read_csv(DF_PATH)
@@ -42,9 +45,14 @@ def tool_describe(input_str: str) -> str:
 
 tools = [tool_schema, tool_nulls, tool_describe]
 
+if MODEL == "GPT":
+    # --- 2) Initialize LLM ---
+    from langchain_openai import OpenAI
+    llm = OpenAI(model="gpt-4", temperature=0.1)
+else:
+    from langchain_community.chat_models import ChatOllama
+    llm = ChatOllama(model="llama3.1:8b", temperature=0.1)
 
-from langchain_openai import ChatOpenAI
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.1)
 
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
