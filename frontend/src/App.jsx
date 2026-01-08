@@ -2,6 +2,15 @@ import { useState } from 'react'
 import './App.css'
 
 function App() {
+  // Function to convert markdown bold (**text**) to HTML
+  const renderMarkdown = (text) => {
+    if (!text) return text
+    
+    // Replace **text** with <strong>text</strong>
+    const boldText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    
+    return { __html: boldText }
+  }
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState('')
   const [loading, setLoading] = useState(false)
@@ -70,7 +79,10 @@ function App() {
                   </div>
                   <div className="answer-bubble">
                     <strong>Agent:</strong>
-                    <div className="answer-content">{item.answer}</div>
+                    <div 
+                      className="answer-content"
+                      dangerouslySetInnerHTML={renderMarkdown(item.answer)}
+                    />
                   </div>
                 </div>
               ))}
@@ -80,7 +92,7 @@ function App() {
           {answer && history.length === 0 && (
             <div className="answer-box">
               <h3>Answer:</h3>
-              <p>{answer}</p>
+              <div dangerouslySetInnerHTML={renderMarkdown(answer)} />
             </div>
           )}
 
