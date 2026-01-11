@@ -270,6 +270,7 @@ class QuestionRequest(BaseModel):
 class AnswerResponse(BaseModel):
     answer: str
     success: bool
+    plot_url: str | None = None  # URL of generated plot if any
 
 @app.get("/")
 def root():
@@ -284,7 +285,15 @@ def ask_question(request: QuestionRequest):
     try:
         result = agent_executor.invoke({"messages": [("human", request.question)]})
         last_message = result["messages"][-1]
-        return AnswerResponse(answer=last_message.content, success=True)
+        
+        # Extract plot URL if present in the response
+        import re
+        plot_url = None
+        url_match = re.search(r'plots/plot_\w+_\d+\.png', last_message.content)
+        if url_match:
+            plot_url = f"/plots/{url_match.group().split('/')[-1]}"
+        
+        return AnswerResponse(answer=last_message.content, success=True, plot_url=plot_url)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

@@ -23,6 +23,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [history, setHistory] = useState([])
+  const [plotUrl, setPlotUrl] = useState(null)
 
   const askQuestion = async () => {
     if (!question.trim()) return
@@ -45,7 +46,9 @@ function App() {
       
       const data = await response.json()
       setAnswer(data.answer)
-      setHistory([...history, { question, answer: data.answer }])
+      const plotUrl = data.plot_url ? `http://localhost:8000${data.plot_url}` : null
+      setPlotUrl(plotUrl)
+      setHistory([...history, { question, answer: data.answer, plotUrl }])
       setQuestion('')
     } catch (err) {
       setError(err.message || 'Failed to get answer')
@@ -81,28 +84,25 @@ function App() {
         <div className="chat-container">
           {history.length > 0 && (
             <div className="history">
-              {history.map((item, index) => {
-                const plotUrl = extractPlotUrl(item.answer)
-                return (
-                  <div key={index} className="chat-item">
-                    <div className="question-bubble">
-                      <strong>You:</strong> {item.question}
-                    </div>
-                    <div className="answer-bubble">
-                      <strong>Agent:</strong>
-                      <div 
-                        className="answer-content"
-                        dangerouslySetInnerHTML={renderMarkdown(item.answer)}
-                      />
-                      {plotUrl && (
-                        <div className="plot-container">
-                          <img src={plotUrl} alt="Generated plot" className="plot-image" />
-                        </div>
-                      )}
-                    </div>
+              {history.map((item, index) => (
+                <div key={index} className="chat-item">
+                  <div className="question-bubble">
+                    <strong>You:</strong> {item.question}
                   </div>
-                )
-              })}
+                  <div className="answer-bubble">
+                    <strong>Agent:</strong>
+                    <div 
+                      className="answer-content"
+                      dangerouslySetInnerHTML={renderMarkdown(item.answer)}
+                    />
+                    {item.plotUrl && (
+                      <div className="plot-container">
+                        <img src={item.plotUrl} alt="Generated plot" className="plot-image" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
