@@ -1,0 +1,159 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                                                                              ║
+║                    🔍 GUÍA DE DEBUGGING - IMÁGENES NO SE MUESTRAN            ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+PROBLEMA REPORTADO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+El agente responde con:
+"A boxplot of fare by passenger class has been generated. It shows the 
+distribution of fares for each passenger class. The plot is available at 
+/plots/plot_boxplot_20260111_203339.png."
+
+Pero la imagen NO se muestra en el frontend.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CAMBIOS APLICADOS PARA DEBUGGING:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ✅ Backend (api.py):
+   - Mejorado regex para capturar URLs con o sin barra inicial
+   - Agregado logging: [DEBUG] Plot URL extracted: ...
+   - Agregado logging si no se encuentra URL
+
+2. ✅ Frontend (App.jsx):
+   - Agregado console.log('API Response:', data)
+   - Agregado console.log('Plot URL:', plotUrl)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PASOS PARA DEBUGGING:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. REINICIAR EL BACKEND:
+   
+   Terminal 1:
+   $ cd /Users/andreleandro/Documents/EDA-Agent
+   $ source .venv/bin/activate
+   $ python api.py
+   
+   ⚠️  IMPORTANTE: Detén el servidor anterior (Ctrl+C) y reinicia
+                   para que los cambios de logging surtan efecto
+
+2. REINICIAR EL FRONTEND:
+   
+   Terminal 2:
+   $ cd /Users/andreleandro/Documents/EDA-Agent/frontend
+   $ npm run dev
+   
+   ⚠️  IMPORTANTE: Recarga el navegador después (Cmd+R o F5)
+
+3. HACER UNA PREGUNTA DE PRUEBA:
+   
+   En el navegador (http://localhost:5173):
+   → "Create a boxplot of fare by passenger class"
+
+4. VERIFICAR LOS LOGS:
+   
+   A) En la consola del BACKEND (Terminal 1):
+      Deberías ver algo como:
+      [DEBUG] Plot URL extracted: /plots/plot_boxplot_XXXXXXXX_XXXXXX.png
+      
+      O si no encuentra:
+      [DEBUG] No plot URL found in response: ...
+   
+   B) En la consola del NAVEGADOR (F12 → Console):
+      Deberías ver:
+      API Response: { answer: "...", success: true, plot_url: "/plots/..." }
+      Plot URL: http://localhost:8000/plots/plot_boxplot_XXXXXXXX_XXXXXX.png
+
+5. VERIFICAR LA RED (Network Tab):
+   
+   F12 → Network → Filtrar por "plots"
+   
+   ¿Hay una petición a /plots/plot_...png?
+   - ✅ SÍ, código 200 → La imagen se cargó correctamente
+   - ❌ SÍ, código 404 → La imagen no existe en el servidor
+   - ❌ NO hay petición → El frontend no está intentando cargar la imagen
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DIAGNÓSTICO SEGÚN LOS LOGS:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CASO A: Backend NO muestra "[DEBUG] Plot URL extracted"
+   
+   ❌ El regex no está encontrando la URL en la respuesta del agente
+   
+   Solución:
+   - Verificar el formato exacto de la respuesta del agente
+   - El patrón actual es: /?plots/plot_\w+_\d+\.png
+   - Puede que necesite ajustarse
+
+CASO B: Backend SÍ muestra plot URL, pero frontend muestra "Plot URL: null"
+   
+   ❌ El frontend no está recibiendo plot_url en la respuesta JSON
+   
+   Solución:
+   - Verificar el modelo AnswerResponse en api.py
+   - Verificar que FastAPI esté serializando correctamente
+
+CASO C: Frontend muestra Plot URL pero la imagen no aparece
+   
+   ❌ Problema de renderizado en React
+   
+   Solución:
+   - Verificar que item.plotUrl existe en el historial
+   - Verificar que la condición {item.plotUrl && ...} se cumple
+   - Revisar errores en la consola del navegador
+
+CASO D: Network muestra 404 al intentar cargar la imagen
+   
+   ❌ La imagen no existe en el servidor
+   
+   Solución:
+   - Verificar que el archivo existe: ls plots/
+   - Verificar que el nombre del archivo coincide con la URL
+   - Verificar permisos del archivo
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRUEBA MANUAL RÁPIDA:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Verificar que la imagen existe:
+   $ ls -lh plots/plot_boxplot_20260111_203339.png
+   
+2. Probar acceso directo en el navegador:
+   http://localhost:8000/plots/plot_boxplot_20260111_203339.png
+   
+   ✅ Si se ve la imagen → El backend funciona
+   ❌ Si sale 404 → El archivo no existe o hay problema de rutas
+
+3. Probar la API directamente:
+   $ python test_api_plot.py
+   
+   Esto enviará una pregunta y verificará la respuesta completa
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CHECKLIST COMPLETO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+□ Backend reiniciado con los nuevos cambios
+□ Frontend reiniciado y navegador recargado
+□ Console del navegador abierta (F12)
+□ Network tab abierta en el navegador
+□ Pregunta enviada y logs revisados
+□ Imagen verificada manualmente en plots/
+□ Acceso directo a la imagen probado en navegador
+□ Respuesta JSON verificada con console.log
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 REPORTE LO QUE VES EN LOS LOGS Y TE AYUDO A RESOLVER EL PROBLEMA ESPECÍFICO
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

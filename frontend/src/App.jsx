@@ -2,20 +2,28 @@ import { useState } from 'react'
 import './App.css'
 
 function App() {
+  // Function to extract plot URLs from text
+  const extractPlotUrl = (text) => {
+    const urlMatch = text.match(/plots\/plot_\w+_\d+\.png/)
+    return urlMatch ? `http://localhost:8000/${urlMatch[0]}` : null
+  }
+
   // Function to convert markdown bold (**text**) to HTML
   const renderMarkdown = (text) => {
     if (!text) return text
     
-    // Replace **text** with <strong>text</strong>
+    // Replace **text** with <strong>$1</strong>
     const boldText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     
     return { __html: boldText }
   }
+
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [history, setHistory] = useState([])
+  const [plotUrl, setPlotUrl] = useState(null)
 
   const askQuestion = async () => {
     if (!question.trim()) return
@@ -37,8 +45,12 @@ function App() {
       }
       
       const data = await response.json()
+      console.log('API Response:', data) // Debug log
       setAnswer(data.answer)
-      setHistory([...history, { question, answer: data.answer }])
+      const plotUrl = data.plot_url ? `http://localhost:8000${data.plot_url}` : null
+      console.log('Plot URL:', plotUrl) // Debug log
+      setPlotUrl(plotUrl)
+      setHistory([...history, { question, answer: data.answer, plotUrl }])
       setQuestion('')
     } catch (err) {
       setError(err.message || 'Failed to get answer')
@@ -58,7 +70,9 @@ function App() {
     "What columns are in the dataset?",
     "Which columns have missing values?",
     "Give me statistics for the age column",
-    "Show me the first 5 columns with their types",
+    "Show me a histogram of age distribution",
+    "Create a boxplot of fare by passenger class",
+    "Generate a correlation heatmap",
   ]
 
   return (
@@ -83,6 +97,11 @@ function App() {
                       className="answer-content"
                       dangerouslySetInnerHTML={renderMarkdown(item.answer)}
                     />
+                    {item.plotUrl && (
+                      <div className="plot-container">
+                        <img src={item.plotUrl} alt="Generated plot" className="plot-image" />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
