@@ -81,6 +81,22 @@
   line-height: 1.6;
 }
 
+.plot-container {
+  margin-top: 15px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.plot-image {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+  display: block;
+}
+
 .answer-box {
   background: white;
   padding: 20px;

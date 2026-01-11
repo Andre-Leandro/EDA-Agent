@@ -2,15 +2,22 @@ import { useState } from 'react'
 import './App.css'
 
 function App() {
+  // Function to extract plot URLs from text
+  const extractPlotUrl = (text) => {
+    const urlMatch = text.match(/plots\/plot_\w+_\d+\.png/)
+    return urlMatch ? `http://localhost:8000/${urlMatch[0]}` : null
+  }
+
   // Function to convert markdown bold (**text**) to HTML
   const renderMarkdown = (text) => {
     if (!text) return text
     
-    // Replace **text** with <strong>text</strong>
+    // Replace **text** with <strong>$1</strong>
     const boldText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     
     return { __html: boldText }
   }
+
   const [question, setQuestion] = useState('')
   const [answer, setAnswer] = useState('')
   const [loading, setLoading] = useState(false)
@@ -58,7 +65,9 @@ function App() {
     "What columns are in the dataset?",
     "Which columns have missing values?",
     "Give me statistics for the age column",
-    "Show me the first 5 columns with their types",
+    "Show me a histogram of age distribution",
+    "Create a boxplot of fare by passenger class",
+    "Generate a correlation heatmap",
   ]
 
   return (
@@ -72,20 +81,28 @@ function App() {
         <div className="chat-container">
           {history.length > 0 && (
             <div className="history">
-              {history.map((item, index) => (
-                <div key={index} className="chat-item">
-                  <div className="question-bubble">
-                    <strong>You:</strong> {item.question}
+              {history.map((item, index) => {
+                const plotUrl = extractPlotUrl(item.answer)
+                return (
+                  <div key={index} className="chat-item">
+                    <div className="question-bubble">
+                      <strong>You:</strong> {item.question}
+                    </div>
+                    <div className="answer-bubble">
+                      <strong>Agent:</strong>
+                      <div 
+                        className="answer-content"
+                        dangerouslySetInnerHTML={renderMarkdown(item.answer)}
+                      />
+                      {plotUrl && (
+                        <div className="plot-container">
+                          <img src={plotUrl} alt="Generated plot" className="plot-image" />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="answer-bubble">
-                    <strong>Agent:</strong>
-                    <div 
-                      className="answer-content"
-                      dangerouslySetInnerHTML={renderMarkdown(item.answer)}
-                    />
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
