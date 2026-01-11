@@ -289,9 +289,15 @@ def ask_question(request: QuestionRequest):
         # Extract plot URL if present in the response
         import re
         plot_url = None
-        url_match = re.search(r'plots/plot_\w+_\d+\.png', last_message.content)
+        # Try to match with or without leading slash
+        url_match = re.search(r'/?plots/plot_\w+_\d+\.png', last_message.content)
         if url_match:
-            plot_url = f"/plots/{url_match.group().split('/')[-1]}"
+            # Extract just the filename
+            filename = url_match.group().split('/')[-1]
+            plot_url = f"/plots/{filename}"
+            print(f"[DEBUG] Plot URL extracted: {plot_url}")  # Debug log
+        else:
+            print(f"[DEBUG] No plot URL found in response: {last_message.content[:100]}...")  # Debug log
         
         return AnswerResponse(answer=last_message.content, success=True, plot_url=plot_url)
     except Exception as e:
