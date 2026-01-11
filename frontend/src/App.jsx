@@ -45,8 +45,10 @@ function App() {
       }
       
       const data = await response.json()
+      console.log('API Response:', data) // Debug log
       setAnswer(data.answer)
       const plotUrl = data.plot_url ? `http://localhost:8000${data.plot_url}` : null
+      console.log('Plot URL:', plotUrl) // Debug log
       setPlotUrl(plotUrl)
       setHistory([...history, { question, answer: data.answer, plotUrl }])
       setQuestion('')
