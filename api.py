@@ -247,7 +247,7 @@ SYSTEM_PROMPT_TEXT = (
     "VISUALIZATION: When users ask for charts or plots, use tool_plot. "
     "First, use tool_schema to check available columns, then generate the appropriate plot. "
     "When a plot is generated successfully, inform the user that the visualization has been created "
-    "and describe what it shows. The plot URL will be available at the 'plot_url' field."
+    "and describe what it shows. "
 )
 
 agent_executor = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT_TEXT)

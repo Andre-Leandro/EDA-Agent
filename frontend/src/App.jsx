@@ -78,68 +78,101 @@ function App() {
     "Generate a correlation heatmap",
   ]
 
+  const downloadImage = async (url) => {
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `plot_${Date.now()}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (error) {
+      console.error('Error downloading image:', error)
+    }
+  }
+
   return (
     <div className="min-h-screen w-full text-black">
-      <header className="sticky top-0 z-20 w-full">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 rounded-2xl border border-white/40 bg-white/70 px-4 py-3 shadow-lg backdrop-blur-xl">
+      <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-white/70 shadow-md backdrop-blur-xl">
+        <div className="flex items-center gap-3 px-4 py-3">
           <img src={pokerCard} alt="App icon" className="h-12 w-12 rounded-xl border border-black/10 object-cover shadow" />
-          <div className="flex flex-col">
+          <div className="flex flex-col items-start">
             <span className="text-xs uppercase tracking-[0.3em] text-neutral-500">EDA Agent</span>
             <h1 className="text-xl font-semibold leading-tight text-black">Data chat with attitude</h1>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-5 pb-10 pt-4">
-        <Card className="flex-1 overflow-hidden border-white/50 bg-white/60 shadow-2xl">
-          <CardContent className="flex h-full flex-col gap-4 p-4 md:p-6">
-            <div className="flex-1 space-y-4 overflow-y-auto pr-1">
-              {history.length > 0 ? (
-                history.map((item, index) => (
-                  <div key={index} className="flex flex-col gap-3">
-                    <div className="flex justify-end">
-                      <div className="max-w-[80%] rounded-2xl bg-black/90 px-4 py-3 text-sm text-white shadow-lg">
-                        <p className="mb-1 text-[11px] uppercase tracking-wide text-white/70">You</p>
-                        <p className="leading-relaxed">{item.question}</p>
-                      </div>
-                    </div>
-                    <div className="flex justify-start">
-                      <div className="max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
-                        <p className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Agent</p>
-                        <div
-                          className="leading-relaxed"
-                          dangerouslySetInnerHTML={renderMarkdown(item.answer)}
-                        />
-                        {item.plotUrl && (
-                          <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-white/80">
-                            <img src={item.plotUrl} alt="Generated plot" className="w-full" />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))
-              ) : answer ? (
-                <div className="max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
-                  <p className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Agent</p>
-                  <div dangerouslySetInnerHTML={renderMarkdown(answer)} />
-                </div>
-              ) : (
-                <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-black/10 bg-white/50 p-6 text-sm text-neutral-500">
-                  Ask something to start the session.
-                </div>
-              )}
-            </div>
-
-            {error && (
-              <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                ❌ {error}
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col pb-48 pt-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4">
+          {history.length === 0 && !answer && (
+            <div className="flex h-full flex-col items-center justify-center gap-4 py-20">
+              <div className="rounded-2xl bg-black/90 px-6 py-4 text-center shadow-lg">
+                <h2 className="text-2xl font-semibold text-white">Ready to explore your data?</h2>
+                <p className="mt-2 text-sm text-white/70">Ask a question below or pick a quick prompt to get started.</p>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          )}
 
-        <div className="rounded-3xl border border-white/50 bg-white/70 p-4 shadow-xl backdrop-blur-xl">
+          {history.length > 0 &&
+            history.map((item, index) => (
+              <div key={index} className="flex flex-col gap-3">
+                <div className="flex justify-end">
+                  <div className="max-w-[80%] rounded-2xl bg-black/90 px-4 py-3 text-sm text-white shadow-lg">
+                    <p className="mb-1 text-[11px] uppercase tracking-wide text-white/70">You</p>
+                    <p className="leading-relaxed">{item.question}</p>
+                  </div>
+                </div>
+                <div className="flex justify-start">
+                  <div className="max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
+                    <p className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Agent</p>
+                    <div
+                      className="leading-relaxed"
+                      dangerouslySetInnerHTML={renderMarkdown(item.answer)}
+                    />
+                    {item.plotUrl && (
+                      <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-white/80">
+                        <img src={item.plotUrl} alt="Generated plot" className="w-full" />
+                        <div className="flex justify-end border-t border-black/10 bg-white/90 px-3 py-2">
+                          <a
+                            href={item.plotUrl}
+                            download
+                            className="inline-flex items-center gap-1 rounded-full bg-black px-3 py-1 text-xs font-medium text-white transition hover:bg-neutral-800"
+                          >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+
+          {history.length === 0 && answer && (
+            <div className="max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
+              <p className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Agent</p>
+              <div dangerouslySetInnerHTML={renderMarkdown(answer)} />
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              ❌ {error}
+            </div>
+          )}
+        </div>
+      </main>
+
+      <div className="fixed bottom-0 left-0 right-0 z-10 border-t border-black/10 bg-white/75 shadow-2xl backdrop-blur-xl">
+        <div className="mx-auto w-full max-w-5xl px-4 py-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-end">
             <Textarea
               value={question}
@@ -147,8 +180,8 @@ function App() {
               onKeyPress={handleKeyPress}
               placeholder="Ask a question about the data..."
               disabled={loading}
-              rows={3}
-              className="min-h-[96px]"
+              rows={2}
+              className="min-h-[64px] max-h-[200px] resize-none"
             />
             <Button
               onClick={askQuestion}
@@ -158,11 +191,6 @@ function App() {
               {loading ? 'Thinking…' : 'Ask'}
             </Button>
           </div>
-          <p className="mt-2 text-xs text-neutral-500">Enter to send · Shift+Enter for newline</p>
-        </div>
-
-        <div className="rounded-3xl border border-white/50 bg-white/70 p-4 shadow-xl backdrop-blur-xl">
-          <p className="text-sm font-semibold text-neutral-700">Quick prompts</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {exampleQuestions.map((q, i) => (
               <Button
@@ -177,9 +205,9 @@ function App() {
             ))}
           </div>
         </div>
-      </main>
+      </div>
 
-      <footer className="pb-6 text-center text-sm text-neutral-600">
+      <footer className="fixed bottom-1 left-0 right-0 z-0 pb-2 text-center text-xs text-neutral-500">
         Powered by Gemini AI 🤖
       </footer>
     </div>
