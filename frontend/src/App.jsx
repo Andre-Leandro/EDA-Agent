@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import pokerCard from './assets/poker-card.jpg'
+import pokerCard from './assets/poker-card.png'
 import { Button } from './components/ui/button'
 import { Textarea } from './components/ui/textarea'
 import { Card, CardContent } from './components/ui/card'
@@ -99,7 +99,7 @@ function App() {
     <div className="min-h-screen w-full text-black">
       <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-white/70 shadow-md backdrop-blur-xl">
         <div className="flex items-center gap-3 px-4 py-3">
-          <img src={pokerCard} alt="App icon" className="h-12 w-12 rounded-xl border border-black/10 object-cover shadow" />
+          <img src={pokerCard} alt="App icon" className="h-12 w-12 rounded-xl" />
           <div className="flex flex-col items-start">
             <span className="text-xs uppercase tracking-[0.3em] text-neutral-500">EDA Agent</span>
             <h1 className="text-xl font-semibold leading-tight text-black">Data chat with attitude</h1>
