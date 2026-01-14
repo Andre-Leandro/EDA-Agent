@@ -138,16 +138,15 @@ function App() {
                       <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-white/80">
                         <img src={item.plotUrl} alt="Generated plot" className="w-full" />
                         <div className="flex justify-end border-t border-black/10 bg-white/90 px-3 py-2">
-                          <a
-                            href={item.plotUrl}
-                            download
+                          <button
+                            onClick={() => downloadImage(item.plotUrl)}
                             className="inline-flex items-center gap-1 rounded-full bg-black px-3 py-1 text-xs font-medium text-white transition hover:bg-neutral-800"
                           >
                             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                             </svg>
                             Download
-                          </a>
+                          </button>
                         </div>
                       </div>
                     )}
