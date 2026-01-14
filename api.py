@@ -247,7 +247,9 @@ SYSTEM_PROMPT_TEXT = (
     "VISUALIZATION: When users ask for charts or plots, use tool_plot. "
     "First, use tool_schema to check available columns, then generate the appropriate plot. "
     "When a plot is generated successfully, inform the user that the visualization has been created "
-    "and describe what it shows. The plot URL will be available at the 'plot_url' field."
+    "and describe what it shows. "
+    "NEVER mention file paths, directories, or technical implementation details like where files are saved. "
+    "Just describe the visualization naturally."
 )
 
 agent_executor = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT_TEXT)
@@ -286,18 +288,19 @@ def ask_question(request: QuestionRequest):
         result = agent_executor.invoke({"messages": [("human", request.question)]})
         last_message = result["messages"][-1]
         
-        # Extract plot URL if present in the response
-        import re
+        # Extract plot URL from tool responses instead of parsing text
         plot_url = None
-        # Try to match with or without leading slash
-        url_match = re.search(r'/?plots/plot_\w+_\d+\.png', last_message.content)
-        if url_match:
-            # Extract just the filename
-            filename = url_match.group().split('/')[-1]
-            plot_url = f"/plots/{filename}"
-            print(f"[DEBUG] Plot URL extracted: {plot_url}")  # Debug log
-        else:
-            print(f"[DEBUG] No plot URL found in response: {last_message.content[:100]}...")  # Debug log
+        for msg in result["messages"]:
+            # Check if this is a tool message from tool_plot
+            if hasattr(msg, 'name') and msg.name == 'tool_plot':
+                try:
+                    tool_result = json.loads(msg.content)
+                    if tool_result.get("success") and tool_result.get("plot_url"):
+                        plot_url = tool_result["plot_url"]
+                        print(f"[DEBUG] Plot URL extracted from tool: {plot_url}")
+                        break
+                except (json.JSONDecodeError, AttributeError):
+                    continue
         
         return AnswerResponse(answer=last_message.content, success=True, plot_url=plot_url)
     except Exception as e:
