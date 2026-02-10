@@ -1,463 +1,34 @@
-# api.py - FastAPI backend for EDA Agent
+"""
+FastAPI backend for EDA Agent.
+Handles HTTP endpoints and routes requests to the agent.
+"""
 import os
 import json
 import pandas as pd
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend for server
-import matplotlib.pyplot as plt
-import seaborn as sns
-from datetime import datetime
+import io
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from dotenv import load_dotenv
-import io
 
-load_dotenv()
+from agent import agent_executor
+from tools.context import set_dataframe
 
-# --- Default CSV path ---
+# --- Configuration ---
 DEFAULT_CSV_PATH = "titanic.csv"
-
-# --- Create plots directory ---
 PLOTS_DIR = "plots"
 os.makedirs(PLOTS_DIR, exist_ok=True)
+# --- Pydantic Models ---
+class AnswerResponse(BaseModel):
+    answer: str
+    success: bool
+    plot_url: str | None = None
 
-# Global variable for current dataframe (will be set per request)
-df = None
-
-# --- Tools ---
-from langchain_core.tools import tool
-
-@tool
-def tool_schema(input_str: str) -> str:
-    """
-    Returns column names and data types as JSON.
-    Optional: input_str can contain a number N to return only the first N columns,
-    or a comma-separated list of column names to filter specific columns.
-    Examples: "3" returns first 3 columns, "age, fare" returns only those columns.
-    If empty, returns all columns.
-    """
-    schema = {col: str(dtype) for col, dtype in df.dtypes.items()}
-    
-    if input_str and input_str.strip():
-        input_str = input_str.strip()
-        if input_str.isdigit():
-            n = int(input_str)
-            cols = list(df.columns[:n])
-            schema = {col: schema[col] for col in cols}
-        else:
-            cols = [c.strip() for c in input_str.split(",") if c.strip() in df.columns]
-            if cols:
-                schema = {col: schema[col] for col in cols}
-    
-    return json.dumps(schema)
-
-@tool
-def tool_nulls(dummy: str) -> str:
-    """Returns columns with the number of missing values as JSON (only columns with >0 missing values)."""
-    nulls = df.isna().sum()
-    result = {col: int(n) for col, n in nulls.items() if n > 0}
-    return json.dumps(result)
-
-@tool
-def tool_describe(input_str: str) -> str:
-    """
-    Returns describe() statistics.
-    Optional: input_str can contain a comma-separated list of columns, e.g. "age, fare".
-    """
-    cols = None
-    if input_str and input_str.strip():
-        cols = [c.strip() for c in input_str.split(",") if c.strip() in df.columns]
-    stats = df[cols].describe() if cols else df.describe()
-    return stats.to_csv(index=True)
-
-@tool
-def tool_plot(input_str: str) -> str:
-    """
-    Generates statistical plots using seaborn/matplotlib.
-    
-    Input format (JSON string): {
-        "plot_type": "histogram" | "bar" | "boxplot" | "scatter" | "line" | "countplot" | "violin" | "heatmap" | "pairplot",
-        "x": "column_name",  # X-axis column (optional for some plots)
-        "y": "column_name",  # Y-axis column (optional)
-        "hue": "column_name",  # Color grouping (optional)
-        "title": "Plot title"  # Optional custom title
-    }
-    
-    Examples:
-    - Histogram: {"plot_type": "histogram", "x": "age", "title": "Age Distribution"}
-    - Boxplot: {"plot_type": "boxplot", "x": "pclass", "y": "fare"}
-    - Scatter: {"plot_type": "scatter", "x": "age", "y": "fare", "hue": "survived"}
-    - Countplot: {"plot_type": "countplot", "x": "sex", "hue": "survived"}
-    - Correlation heatmap: {"plot_type": "heatmap"}
-    
-    Returns: Path to the generated plot image.
-    """
-    try:
-        # Parse input JSON
-        params = json.loads(input_str)
-        plot_type = params.get("plot_type", "histogram").lower()
-        x_col = params.get("x")
-        y_col = params.get("y")
-        hue_col = params.get("hue")
-        title = params.get("title", "")
-        
-        # Validate columns exist
-        for col, name in [(x_col, "x"), (y_col, "y"), (hue_col, "hue")]:
-            if col and col not in df.columns:
-                return json.dumps({
-                    "error": f"Column '{col}' not found in dataset.",
-                    "available_columns": list(df.columns)
-                })
-        
-        # Create figure
-        plt.figure(figsize=(10, 6))
-        sns.set_style("whitegrid")
-        
-        # Generate plot based on type
-        if plot_type == "histogram":
-            if not x_col:
-                return json.dumps({"error": "'x' column is required for histogram"})
-            sns.histplot(data=df, x=x_col, hue=hue_col, kde=True)
-            if not title:
-                title = f"Distribution of {x_col}"
-                
-        elif plot_type == "bar":
-            if not x_col or not y_col:
-                return json.dumps({"error": "'x' and 'y' columns are required for bar plot"})
-            sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col)
-            if not title:
-                title = f"{y_col} by {x_col}"
-                
-        elif plot_type == "boxplot":
-            if not y_col:
-                return json.dumps({"error": "'y' column is required for boxplot"})
-            sns.boxplot(data=df, x=x_col, y=y_col, hue=hue_col)
-            if not title:
-                title = f"Box Plot of {y_col}" + (f" by {x_col}" if x_col else "")
-                
-        elif plot_type == "scatter":
-            if not x_col or not y_col:
-                return json.dumps({"error": "'x' and 'y' columns are required for scatter plot"})
-            sns.scatterplot(data=df, x=x_col, y=y_col, hue=hue_col, alpha=0.6)
-            if not title:
-                title = f"{y_col} vs {x_col}"
-                
-        elif plot_type == "line":
-            if not x_col or not y_col:
-                return json.dumps({"error": "'x' and 'y' columns are required for line plot"})
-            sns.lineplot(data=df, x=x_col, y=y_col, hue=hue_col)
-            if not title:
-                title = f"{y_col} over {x_col}"
-                
-        elif plot_type == "countplot":
-            if not x_col:
-                return json.dumps({"error": "'x' column is required for countplot"})
-            sns.countplot(data=df, x=x_col, hue=hue_col)
-            if not title:
-                title = f"Count of {x_col}"
-                
-        elif plot_type == "violin":
-            if not y_col:
-                return json.dumps({"error": "'y' column is required for violin plot"})
-            sns.violinplot(data=df, x=x_col, y=y_col, hue=hue_col)
-            if not title:
-                title = f"Violin Plot of {y_col}" + (f" by {x_col}" if x_col else "")
-                
-        elif plot_type == "heatmap":
-            # Select only numeric columns for correlation
-            numeric_df = df.select_dtypes(include=['number'])
-            if numeric_df.empty:
-                return json.dumps({"error": "No numeric columns found for correlation heatmap"})
-            corr = numeric_df.corr()
-            sns.heatmap(corr, annot=True, cmap='coolwarm', center=0, fmt='.2f')
-            if not title:
-                title = "Correlation Heatmap"
-                
-        elif plot_type == "pairplot":
-            # For pairplot, we need to save differently
-            cols_to_plot = [c for c in [x_col, y_col, hue_col] if c]
-            if not cols_to_plot:
-                # Use all numeric columns
-                cols_to_plot = df.select_dtypes(include=['number']).columns.tolist()[:4]  # Limit to 4 for performance
-            
-            pairplot = sns.pairplot(df[cols_to_plot], hue=hue_col if hue_col in cols_to_plot else None)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"plot_{plot_type}_{timestamp}.png"
-            filepath = os.path.join(PLOTS_DIR, filename)
-            pairplot.savefig(filepath, dpi=100, bbox_inches='tight')
-            plt.close()
-            
-            return json.dumps({
-                "success": True,
-                "plot_path": filepath,
-                "plot_url": f"/plots/{filename}",
-                "message": f"Pairplot generated successfully for columns: {', '.join(cols_to_plot)}"
-            })
-        else:
-            return json.dumps({
-                "error": f"Unknown plot type: {plot_type}",
-                "supported_types": ["histogram", "bar", "boxplot", "scatter", "line", "countplot", "violin", "heatmap", "pairplot"]
-            })
-        
-        # Set title and labels
-        plt.title(title, fontsize=14, fontweight='bold')
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        
-        # Save plot
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"plot_{plot_type}_{timestamp}.png"
-        filepath = os.path.join(PLOTS_DIR, filename)
-        plt.savefig(filepath, dpi=100, bbox_inches='tight')
-        plt.close()
-        
-        return json.dumps({
-            "success": True,
-            "plot_path": filepath,
-            "plot_url": f"/plots/{filename}",
-            "message": f"{plot_type.capitalize()} plot generated successfully!"
-        })
-        
-    except json.JSONDecodeError:
-        return json.dumps({"error": "Invalid JSON format in input. Please provide valid JSON."})
-    except Exception as e:
-        return json.dumps({"error": f"Failed to generate plot: {str(e)}"})
-    
-# Nuevas herramientas para análisis de datos
-
-@tool
-def tool_column_profile(column: str) -> str:
-    """
-    Returns a detailed, neutral profile of a single column.
-    No interpretation or recommendations included.
-    """
-    if column not in df.columns:
-        return json.dumps({
-            "error": f"Column '{column}' not found",
-            "available_columns": list(df.columns)
-        })
-
-    s = df[column]
-    total = len(s)
-
-    profile = {
-        "column": column,
-        "dtype": str(s.dtype),
-        "missing": {
-            "count": int(s.isna().sum()),
-            "percentage": round(float(s.isna().mean() * 100), 2)
-        },
-        "cardinality": int(s.nunique(dropna=True))
-    }
-
-    # Top values
-    value_counts = s.value_counts(dropna=True).head(10)
-    profile["top_values"] = {
-        str(k): int(v) for k, v in value_counts.items()
-    }
-
-    # Numeric-only stats
-    if pd.api.types.is_numeric_dtype(s):
-        q1 = s.quantile(0.25)
-        q3 = s.quantile(0.75)
-        iqr = q3 - q1
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-
-        profile["numeric_stats"] = {
-            "min": float(s.min()),
-            "max": float(s.max()),
-            "mean": float(s.mean()),
-            "median": float(s.median()),
-            "std": float(s.std()),
-            "skewness": float(s.skew()),
-            "outliers": {
-                "count": int(((s < lower) | (s > upper)).sum()),
-                "lower_bound": float(lower),
-                "upper_bound": float(upper)
-            }
-        }
-
-    return json.dumps(profile)
-
-
-@tool
-def tool_outliers(input_str: str) -> str:
-    """
-    Detects outliers for a numeric column.
-    Input JSON:
-    {
-        "column": "fare",
-        "method": "iqr" | "zscore"
-    }
-    """
-    params = json.loads(input_str)
-    column = params.get("column")
-    method = params.get("method", "iqr")
-
-    if column not in df.columns:
-        return json.dumps({"error": f"Column '{column}' not found"})
-
-    s = df[column].dropna()
-
-    if not pd.api.types.is_numeric_dtype(s):
-        return json.dumps({"error": f"Column '{column}' is not numeric"})
-
-    result = {
-        "column": column,
-        "method": method
-    }
-
-    if method == "iqr":
-        q1 = s.quantile(0.25)
-        q3 = s.quantile(0.75)
-        iqr = q3 - q1
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-        mask = (s < lower) | (s > upper)
-
-        result["bounds"] = {
-            "lower": float(lower),
-            "upper": float(upper)
-        }
-
-    elif method == "zscore":
-        mean = s.mean()
-        std = s.std()
-        z = (s - mean) / std
-        mask = z.abs() > 3
-
-        result["zscore_threshold"] = 3.0
-
-    else:
-        return json.dumps({"error": "Method must be 'iqr' or 'zscore'"})
-
-    outliers = s[mask]
-
-    result["outliers"] = {
-        "count": int(len(outliers)),
-        "percentage": round(float(len(outliers) / len(s) * 100), 2),
-        "min": float(outliers.min()) if not outliers.empty else None,
-        "max": float(outliers.max()) if not outliers.empty else None
-    }
-
-    return json.dumps(result)@tool
-def tool_correlation(input_str: str) -> str:
-    """
-    Computes correlation matrix for selected numeric columns.
-    Input JSON:
-    {
-        "columns": ["age", "fare", "sibsp"],
-        "method": "pearson" | "spearman"
-    }
-    """
-    params = json.loads(input_str)
-    columns = params.get("columns")
-    method = params.get("method", "pearson")
-
-    if not columns or not isinstance(columns, list):
-        return json.dumps({"error": "A list of columns is required"})
-
-    missing = [c for c in columns if c not in df.columns]
-    if missing:
-        return json.dumps({"error": f"Columns not found: {missing}"})
-
-    numeric_df = df[columns].select_dtypes(include="number")
-
-    if numeric_df.empty:
-        return json.dumps({"error": "No numeric columns available for correlation"})
-
-    corr = numeric_df.corr(method=method)
-
-    return json.dumps({
-        "method": method,
-        "columns": list(corr.columns),
-        "correlation_matrix": corr.round(4).to_dict()
-    })
-
-@tool
-def tool_categorical_distribution(input_str: str) -> str:
-    """
-    Returns frequency distribution for a categorical column.
-    Input JSON:
-    {
-        "column": "sex",
-        "top_k": 10
-    }
-    """
-    params = json.loads(input_str)
-    column = params.get("column")
-    top_k = int(params.get("top_k", 10))
-
-    if column not in df.columns:
-        return json.dumps({"error": f"Column '{column}' not found"})
-
-    s = df[column].dropna()
-    total = len(s)
-
-    counts = s.value_counts()
-    top = counts.head(top_k)
-    other_count = counts.iloc[top_k:].sum()
-
-    distribution = {
-        str(k): {
-            "count": int(v),
-            "percentage": round(float(v / total * 100), 2)
-        }
-        for k, v in top.items()
-    }
-
-    if other_count > 0:
-        distribution["__other__"] = {
-            "count": int(other_count),
-            "percentage": round(float(other_count / total * 100), 2)
-        }
-
-    return json.dumps({
-        "column": column,
-        "cardinality": int(counts.size),
-        "distribution": distribution
-    })
-
-
-tools = [tool_schema, tool_nulls, tool_describe, tool_plot, tool_column_profile, tool_outliers, tool_correlation, tool_categorical_distribution]
-
-# --- LLM (Gemini) ---
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
-    temperature=0.1,
-    google_api_key=os.getenv("GOOGLE_API_KEY")
-)
-
-# --- Agent ---
-from langchain.agents import create_agent
-
-SYSTEM_PROMPT_TEXT = (
-    "You are a data-focused assistant that helps users analyze CSV data. "
-    "When a question requires information from the CSV, use the appropriate tool. "
-    "Use only one tool call per step if possible. "
-    "IMPORTANT: After receiving a tool result, interpret it and provide a clear, "
-    "human-readable answer. Do NOT show raw JSON or code blocks in your response. "
-    "Format lists as bullet points. For example, instead of showing {'Age': 177}, "
-    "write '- Age: 177 missing values'.\n\n"
-    "VISUALIZATION: When users ask for charts or plots, use tool_plot. "
-    "First, use tool_schema to check available columns, then generate the appropriate plot. "
-    "When a plot is generated successfully, inform the user that the visualization has been created "
-    "and describe what it shows. "
-    "NEVER mention file paths, directories, or technical implementation details like where files are saved. "
-    "Just describe the visualization naturally."
-)
-
-agent_executor = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT_TEXT)
 
 # --- FastAPI App ---
 app = FastAPI(title="EDA Agent API", version="1.0.0")
 
-# CORS for frontend
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -466,21 +37,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class QuestionRequest(BaseModel):
-    question: str
 
-class AnswerResponse(BaseModel):
-    answer: str
-    success: bool
-    plot_url: str | None = None  # URL of generated plot if any
-
+# --- Endpoints ---
 @app.get("/")
 def root():
+    """Root endpoint - health check."""
     return {"message": "EDA Agent API is running", "status": "ok"}
+
 
 @app.get("/health")
 def health():
+    """Health check endpoint."""
     return {"status": "healthy"}
+
 
 @app.post("/ask", response_model=AnswerResponse)
 async def ask_question(
@@ -488,8 +57,17 @@ async def ask_question(
     dataset_type: str = Form("default"),
     file: UploadFile = File(None)
 ):
-    global df
+    """
+    Process a question about the dataset.
     
+    Args:
+        question: The user's question
+        dataset_type: Either 'default' or 'custom'
+        file: Optional CSV file for custom datasets
+        
+    Returns:
+        AnswerResponse with the answer and optional plot URL
+    """
     try:
         # Load the appropriate CSV based on the request
         if dataset_type == "custom" and file:
@@ -501,6 +79,9 @@ async def ask_question(
             # Use default Titanic dataset
             df = pd.read_csv(DEFAULT_CSV_PATH)
             print(f"[DEBUG] Loaded default CSV: {DEFAULT_CSV_PATH}, shape: {df.shape}")
+        
+        # Set the dataframe in the context for tools to use
+        set_dataframe(df)
         
         # Process the question with the agent
         result = agent_executor.invoke({"messages": [("human", question)]})
@@ -523,14 +104,25 @@ async def ask_question(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/plots/{filename}")
 def get_plot(filename: str):
-    """Serve plot images"""
+    """
+    Serve generated plot images.
+    
+    Args:
+        filename: Name of the plot file
+        
+    Returns:
+        FileResponse with the plot image
+    """
     filepath = os.path.join(PLOTS_DIR, filename)
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="Plot not found")
     return FileResponse(filepath, media_type="image/png")
 
+
+# --- Main ---
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
