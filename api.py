@@ -221,8 +221,205 @@ def tool_plot(input_str: str) -> str:
         return json.dumps({"error": "Invalid JSON format in input. Please provide valid JSON."})
     except Exception as e:
         return json.dumps({"error": f"Failed to generate plot: {str(e)}"})
+    
+# Nuevas herramientas para análisis de datos
 
-tools = [tool_schema, tool_nulls, tool_describe, tool_plot]
+@tool
+def tool_column_profile(column: str) -> str:
+    """
+    Returns a detailed, neutral profile of a single column.
+    No interpretation or recommendations included.
+    """
+    if column not in df.columns:
+        return json.dumps({
+            "error": f"Column '{column}' not found",
+            "available_columns": list(df.columns)
+        })
+
+    s = df[column]
+    total = len(s)
+
+    profile = {
+        "column": column,
+        "dtype": str(s.dtype),
+        "missing": {
+            "count": int(s.isna().sum()),
+            "percentage": round(float(s.isna().mean() * 100), 2)
+        },
+        "cardinality": int(s.nunique(dropna=True))
+    }
+
+    # Top values
+    value_counts = s.value_counts(dropna=True).head(10)
+    profile["top_values"] = {
+        str(k): int(v) for k, v in value_counts.items()
+    }
+
+    # Numeric-only stats
+    if pd.api.types.is_numeric_dtype(s):
+        q1 = s.quantile(0.25)
+        q3 = s.quantile(0.75)
+        iqr = q3 - q1
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+
+        profile["numeric_stats"] = {
+            "min": float(s.min()),
+            "max": float(s.max()),
+            "mean": float(s.mean()),
+            "median": float(s.median()),
+            "std": float(s.std()),
+            "skewness": float(s.skew()),
+            "outliers": {
+                "count": int(((s < lower) | (s > upper)).sum()),
+                "lower_bound": float(lower),
+                "upper_bound": float(upper)
+            }
+        }
+
+    return json.dumps(profile)
+
+
+@tool
+def tool_outliers(input_str: str) -> str:
+    """
+    Detects outliers for a numeric column.
+    Input JSON:
+    {
+        "column": "fare",
+        "method": "iqr" | "zscore"
+    }
+    """
+    params = json.loads(input_str)
+    column = params.get("column")
+    method = params.get("method", "iqr")
+
+    if column not in df.columns:
+        return json.dumps({"error": f"Column '{column}' not found"})
+
+    s = df[column].dropna()
+
+    if not pd.api.types.is_numeric_dtype(s):
+        return json.dumps({"error": f"Column '{column}' is not numeric"})
+
+    result = {
+        "column": column,
+        "method": method
+    }
+
+    if method == "iqr":
+        q1 = s.quantile(0.25)
+        q3 = s.quantile(0.75)
+        iqr = q3 - q1
+        lower = q1 - 1.5 * iqr
+        upper = q3 + 1.5 * iqr
+        mask = (s < lower) | (s > upper)
+
+        result["bounds"] = {
+            "lower": float(lower),
+            "upper": float(upper)
+        }
+
+    elif method == "zscore":
+        mean = s.mean()
+        std = s.std()
+        z = (s - mean) / std
+        mask = z.abs() > 3
+
+        result["zscore_threshold"] = 3.0
+
+    else:
+        return json.dumps({"error": "Method must be 'iqr' or 'zscore'"})
+
+    outliers = s[mask]
+
+    result["outliers"] = {
+        "count": int(len(outliers)),
+        "percentage": round(float(len(outliers) / len(s) * 100), 2),
+        "min": float(outliers.min()) if not outliers.empty else None,
+        "max": float(outliers.max()) if not outliers.empty else None
+    }
+
+    return json.dumps(result)@tool
+def tool_correlation(input_str: str) -> str:
+    """
+    Computes correlation matrix for selected numeric columns.
+    Input JSON:
+    {
+        "columns": ["age", "fare", "sibsp"],
+        "method": "pearson" | "spearman"
+    }
+    """
+    params = json.loads(input_str)
+    columns = params.get("columns")
+    method = params.get("method", "pearson")
+
+    if not columns or not isinstance(columns, list):
+        return json.dumps({"error": "A list of columns is required"})
+
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        return json.dumps({"error": f"Columns not found: {missing}"})
+
+    numeric_df = df[columns].select_dtypes(include="number")
+
+    if numeric_df.empty:
+        return json.dumps({"error": "No numeric columns available for correlation"})
+
+    corr = numeric_df.corr(method=method)
+
+    return json.dumps({
+        "method": method,
+        "columns": list(corr.columns),
+        "correlation_matrix": corr.round(4).to_dict()
+    })
+
+@tool
+def tool_categorical_distribution(input_str: str) -> str:
+    """
+    Returns frequency distribution for a categorical column.
+    Input JSON:
+    {
+        "column": "sex",
+        "top_k": 10
+    }
+    """
+    params = json.loads(input_str)
+    column = params.get("column")
+    top_k = int(params.get("top_k", 10))
+
+    if column not in df.columns:
+        return json.dumps({"error": f"Column '{column}' not found"})
+
+    s = df[column].dropna()
+    total = len(s)
+
+    counts = s.value_counts()
+    top = counts.head(top_k)
+    other_count = counts.iloc[top_k:].sum()
+
+    distribution = {
+        str(k): {
+            "count": int(v),
+            "percentage": round(float(v / total * 100), 2)
+        }
+        for k, v in top.items()
+    }
+
+    if other_count > 0:
+        distribution["__other__"] = {
+            "count": int(other_count),
+            "percentage": round(float(other_count / total * 100), 2)
+        }
+
+    return json.dumps({
+        "column": column,
+        "cardinality": int(counts.size),
+        "distribution": distribution
+    })
+
+
+tools = [tool_schema, tool_nulls, tool_describe, tool_plot, tool_column_profile, tool_outliers, tool_correlation, tool_categorical_distribution]
 
 # --- LLM (Gemini) ---
 from langchain_google_genai import ChatGoogleGenerativeAI

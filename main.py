@@ -218,9 +218,47 @@ def tool_plot(input_str: str) -> str:
         return json.dumps({"error": "Invalid JSON format in input. Please provide valid JSON."})
     except Exception as e:
         return json.dumps({"error": f"Failed to generate plot: {str(e)}"})
+    
+
+
+@tool
+def tool_correlation(input_str: str) -> str:
+    """
+    Computes correlation matrix for selected numeric columns.
+    Input JSON:
+    {
+        "columns": ["age", "fare", "sibsp"],
+        "method": "pearson" | "spearman"
+    }
+    """
+    params = json.loads(input_str)
+    columns = params.get("columns")
+    method = params.get("method", "pearson")
+
+    if not columns or not isinstance(columns, list):
+        return json.dumps({"error": "A list of columns is required"})
+
+    missing = [c for c in columns if c not in df.columns]
+    if missing:
+        return json.dumps({"error": f"Columns not found: {missing}"})
+
+    numeric_df = df[columns].select_dtypes(include="number")
+
+    if numeric_df.empty:
+        return json.dumps({"error": "No numeric columns available for correlation"})
+
+    corr = numeric_df.corr(method=method)
+
+    return json.dumps({
+        "method": method,
+        "columns": list(corr.columns),
+        "correlation_matrix": corr.round(4).to_dict()
+    })
+
+
 
 # --- 2) Registering tools for LangChain ---
-tools = [tool_schema, tool_nulls, tool_describe, tool_plot]
+tools = [tool_schema, tool_nulls, tool_describe, tool_plot, tool_outliers, tool_correlation]
 
 # --- 3) Configure LLM (Gemini) ---
 from langchain_google_genai import ChatGoogleGenerativeAI
