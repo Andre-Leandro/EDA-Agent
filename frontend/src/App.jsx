@@ -166,7 +166,7 @@ function App() {
             <img src={pokerCard} alt="App icon" className="h-12 w-12 rounded-xl" />
             <div className="flex flex-col items-start">
               <span className="text-xs uppercase tracking-[0.3em] text-neutral-500">EDA Agent</span>
-              <h1 className="text-xl font-semibold leading-tight text-black">Data chat with attitude</h1>
+              <h1 className="text-xl font-semibold leading-tight text-black">Data chat</h1>
             </div>
           </div>
           

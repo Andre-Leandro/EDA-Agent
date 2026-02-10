@@ -26,6 +26,7 @@ def tool_plot(input_str: str) -> str:
         "x": "column_name",  # X-axis column (optional for some plots)
         "y": "column_name",  # Y-axis column (optional)
         "hue": "column_name",  # Color grouping (optional)
+        "columns": ["col1", "col2", "col3"],  # List of columns for heatmap/pairplot (optional)
         "title": "Plot title"  # Optional custom title
     }
     
@@ -34,7 +35,12 @@ def tool_plot(input_str: str) -> str:
     - Boxplot: {"plot_type": "boxplot", "x": "pclass", "y": "fare"}
     - Scatter: {"plot_type": "scatter", "x": "age", "y": "fare", "hue": "survived"}
     - Countplot: {"plot_type": "countplot", "x": "sex", "hue": "survived"}
-    - Correlation heatmap: {"plot_type": "heatmap"}
+    - Correlation heatmap (all): {"plot_type": "heatmap"} # Uses all numeric columns
+    - Correlation heatmap (specific): {"plot_type": "heatmap", "columns": ["age", "fare", "pclass"]}
+    - Pairplot: {"plot_type": "pairplot"} # Automatically uses first 4 numeric columns
+    
+    Note: For heatmap and pairplot, "columns" parameter is optional. If not specified, 
+    all numeric columns will be used automatically.
     
     Returns: Path to the generated plot image.
     """
@@ -47,6 +53,7 @@ def tool_plot(input_str: str) -> str:
         x_col = params.get("x")
         y_col = params.get("y")
         hue_col = params.get("hue")
+        columns_list = params.get("columns")  # List of columns for heatmap/pairplot
         title = params.get("title", "")
         
         # Validate columns exist
@@ -112,21 +119,47 @@ def tool_plot(input_str: str) -> str:
                 title = f"Violin Plot of {y_col}" + (f" by {x_col}" if x_col else "")
                 
         elif plot_type == "heatmap":
-            # Select only numeric columns for correlation
-            numeric_df = df.select_dtypes(include=['number'])
+            # Select columns for correlation heatmap
+            if columns_list:
+                # Use specific columns if provided as a list
+                missing_cols = [c for c in columns_list if c not in df.columns]
+                if missing_cols:
+                    return json.dumps({
+                        "error": f"Columns not found: {missing_cols}",
+                        "available_columns": list(df.columns)
+                    })
+                numeric_df = df[columns_list].select_dtypes(include=['number'])
+            elif x_col or y_col:
+                # Use x and y columns if provided
+                cols_to_use = [c for c in [x_col, y_col] if c]
+                numeric_df = df[cols_to_use].select_dtypes(include=['number'])
+            else:
+                # Use all numeric columns by default
+                numeric_df = df.select_dtypes(include=['number'])
+            
             if numeric_df.empty:
                 return json.dumps({"error": "No numeric columns found for correlation heatmap"})
+            
             corr = numeric_df.corr()
             sns.heatmap(corr, annot=True, cmap='coolwarm', center=0, fmt='.2f')
             if not title:
-                title = "Correlation Heatmap"
+                if columns_list:
+                    title = f"Correlation Heatmap ({', '.join(columns_list)})"
+                else:
+                    title = "Correlation Heatmap"
                 
         elif plot_type == "pairplot":
             # For pairplot, we need to save differently
-            cols_to_plot = [c for c in [x_col, y_col, hue_col] if c]
+            if columns_list:
+                # Use specific columns if provided as a list
+                cols_to_plot = [c for c in columns_list if c in df.columns]
+            else:
+                # Try x, y, hue columns first
+                cols_to_plot = [c for c in [x_col, y_col, hue_col] if c]
+                
             if not cols_to_plot:
-                # Use all numeric columns
-                cols_to_plot = df.select_dtypes(include=['number']).columns.tolist()[:4]  # Limit to 4 for performance
+                # Use all numeric columns (limit to 4 for performance)
+                cols_to_plot = df.select_dtypes(include=['number']).columns.tolist()[:4]
             
             pairplot = sns.pairplot(df[cols_to_plot], hue=hue_col if hue_col in cols_to_plot else None)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
