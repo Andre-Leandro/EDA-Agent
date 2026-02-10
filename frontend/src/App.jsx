@@ -27,6 +27,14 @@ function App() {
   const [error, setError] = useState('')
   const [history, setHistory] = useState([])
   const [plotUrl, setPlotUrl] = useState(null)
+  const [datasetType, setDatasetType] = useState('default')
+  const [uploadedFileName, setUploadedFileName] = useState('')
+  const [uploadedFile, setUploadedFile] = useState(null) // Store the actual file
+  const [isDragging, setIsDragging] = useState(false)
+  const [sessionId] = useState(() => {
+    // Generate unique session ID when component loads
+    return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
+  })
 
   const askQuestion = async () => {
     if (!question.trim()) return
@@ -35,12 +43,18 @@ function App() {
     setError('')
     
     try {
+      const formData = new FormData()
+      formData.append('question', question)
+      formData.append('dataset_type', datasetType)
+      
+      // If custom dataset and file is uploaded, send the file
+      if (datasetType === 'custom' && uploadedFile) {
+        formData.append('file', uploadedFile)
+      }
+      
       const response = await fetch('http://localhost:8000/ask', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ question: question }),
+        body: formData,
       })
       
       if (!response.ok) {
@@ -72,10 +86,10 @@ function App() {
   const exampleQuestions = [
     "What columns are in the dataset?",
     "Which columns have missing values?",
-    "Give me statistics for the age column",
-    "Show me a histogram of age distribution",
-    "Create a boxplot of fare by passenger class",
-    "Generate a correlation heatmap",
+    "Give me basic information about the dataset",
+    "Show me a correlation heatmap",
+    "Create a histogram of the first numeric column",
+    "Show me statistics for all numeric columns",
   ]
 
   const downloadImage = async (url) => {
@@ -95,25 +109,129 @@ function App() {
     }
   }
 
+  const handleFileUpload = async (file) => {
+    if (!file || file.type !== 'text/csv') {
+      setError('Please select a valid CSV file')
+      return
+    }
+
+    // Store the file for later use in ask requests
+    setUploadedFile(file)
+    setUploadedFileName(file.name)
+    setDatasetType('custom')
+    setHistory([]) // Clear history when switching datasets
+    setAnswer('')
+    setPlotUrl(null)
+    setError('')
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setIsDragging(false)
+    const files = e.dataTransfer.files
+    if (files.length > 0) {
+      handleFileUpload(files[0])
+    }
+  }
+
+  const handleDatasetChange = (type) => {
+    if (type === 'default') {
+      setDatasetType('default')
+      setUploadedFileName('')
+      setUploadedFile(null)
+      setHistory([])
+      setAnswer('')
+      setPlotUrl(null)
+      setError('')
+    } else {
+      setDatasetType('custom')
+    }
+  }
+
   return (
     <div className="min-h-screen w-full text-black">
       <header className="sticky top-0 z-20 w-full border-b border-black/10 bg-white/70 shadow-md backdrop-blur-xl">
-        <div className="flex items-center gap-3 px-4 py-3">
-          <img src={pokerCard} alt="App icon" className="h-12 w-12 rounded-xl" />
-          <div className="flex flex-col items-start">
-            <span className="text-xs uppercase tracking-[0.3em] text-neutral-500">EDA Agent</span>
-            <h1 className="text-xl font-semibold leading-tight text-black">Data chat with attitude</h1>
+        <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <img src={pokerCard} alt="App icon" className="h-12 w-12 rounded-xl" />
+            <div className="flex flex-col items-start">
+              <span className="text-xs uppercase tracking-[0.3em] text-neutral-500">EDA Agent</span>
+              <h1 className="text-xl font-semibold leading-tight text-black">Data chat with attitude</h1>
+            </div>
+          </div>
+          
+          {/* Dataset Selector */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 rounded-lg border border-black/20 bg-white/90 px-3 py-2">
+              <span className="text-sm font-medium text-neutral-600">Dataset:</span>
+              <select 
+                value={datasetType} 
+                onChange={(e) => handleDatasetChange(e.target.value)}
+                className="bg-transparent text-sm font-medium text-black outline-none"
+              >
+                <option value="default">Default (Titanic)</option>
+                <option value="custom">Upload Custom CSV</option>
+              </select>
+            </div>
+            {datasetType === 'custom' && uploadedFileName && (
+              <span className="text-xs text-green-600 font-medium">📄 {uploadedFileName}</span>
+            )}
           </div>
         </div>
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col pb-48 pt-4">
         <div className="flex-1 space-y-4 overflow-y-auto px-4">
-          {history.length === 0 && !answer && (
+          {/* File Upload Area for Custom Dataset */}
+          {datasetType === 'custom' && !uploadedFileName && (
+            <div className="mx-auto max-w-md">
+              <div 
+                className={`rounded-2xl border-2 border-dashed p-8 text-center transition-colors ${
+                  isDragging 
+                    ? 'border-blue-400 bg-blue-50' 
+                    : 'border-black/20 bg-white/50'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <div className="mb-4">
+                  <svg className="mx-auto h-12 w-12 text-neutral-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-black">Upload your CSV file</h3>
+                <p className="mt-2 text-sm text-neutral-600">Drag and drop your CSV file here, or click to browse</p>
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0])}
+                  className="mt-4 block w-full text-sm text-neutral-500 file:mr-4 file:rounded-full file:border-0 file:bg-black file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-neutral-800"
+                />
+              </div>
+            </div>
+          )}
+          
+          {history.length === 0 && !answer && (datasetType === 'default' || uploadedFileName) && (
             <div className="flex h-full flex-col items-center justify-center gap-4 py-20">
               <div className="rounded-2xl bg-black/90 px-6 py-4 text-center shadow-lg">
                 <h2 className="text-2xl font-semibold text-white">Ready to explore your data?</h2>
-                <p className="mt-2 text-sm text-white/70">Ask a question below or pick a quick prompt to get started.</p>
+                <p className="mt-2 text-sm text-white/70">
+                  {datasetType === 'default' 
+                    ? 'Ask a question about the Titanic dataset below or pick a quick prompt to get started.'
+                    : `Ask a question about your ${uploadedFileName} dataset below.`
+                  }
+                </p>
               </div>
             </div>
           )}

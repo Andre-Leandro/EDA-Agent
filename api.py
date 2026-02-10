@@ -7,21 +7,24 @@ matplotlib.use('Agg')  # Non-interactive backend for server
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
+import io
 
 load_dotenv()
 
-# --- Load CSV ---
-DF_PATH = "titanic.csv"
-df = pd.read_csv(DF_PATH)
+# --- Default CSV path ---
+DEFAULT_CSV_PATH = "titanic.csv"
 
 # --- Create plots directory ---
 PLOTS_DIR = "plots"
 os.makedirs(PLOTS_DIR, exist_ok=True)
+
+# Global variable for current dataframe (will be set per request)
+df = None
 
 # --- Tools ---
 from langchain_core.tools import tool
@@ -480,15 +483,32 @@ def health():
     return {"status": "healthy"}
 
 @app.post("/ask", response_model=AnswerResponse)
-def ask_question(request: QuestionRequest):
+async def ask_question(
+    question: str = Form(...),
+    dataset_type: str = Form("default"),
+    file: UploadFile = File(None)
+):
+    global df
+    
     try:
-        result = agent_executor.invoke({"messages": [("human", request.question)]})
+        # Load the appropriate CSV based on the request
+        if dataset_type == "custom" and file:
+            # Read the uploaded CSV file
+            contents = await file.read()
+            df = pd.read_csv(io.BytesIO(contents))
+            print(f"[DEBUG] Loaded custom CSV: {file.filename}, shape: {df.shape}")
+        else:
+            # Use default Titanic dataset
+            df = pd.read_csv(DEFAULT_CSV_PATH)
+            print(f"[DEBUG] Loaded default CSV: {DEFAULT_CSV_PATH}, shape: {df.shape}")
+        
+        # Process the question with the agent
+        result = agent_executor.invoke({"messages": [("human", question)]})
         last_message = result["messages"][-1]
         
-        # Extract plot URL from tool responses instead of parsing text
+        # Extract plot URL from tool responses
         plot_url = None
         for msg in result["messages"]:
-            # Check if this is a tool message from tool_plot
             if hasattr(msg, 'name') and msg.name == 'tool_plot':
                 try:
                     tool_result = json.loads(msg.content)
