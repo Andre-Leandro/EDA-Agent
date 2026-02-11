@@ -15,8 +15,10 @@ from agent import agent_executor
 from tools.context import set_dataframe
 
 # --- Configuration ---
-DEFAULT_CSV_PATH = "titanic.csv"
-PLOTS_DIR = "plots"
+# Use absolute path relative to this file
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_CSV_PATH = os.path.join(BACKEND_DIR, "titanic.csv")
+PLOTS_DIR = os.path.join(BACKEND_DIR, "plots")
 os.makedirs(PLOTS_DIR, exist_ok=True)
 # --- Pydantic Models ---
 class AnswerResponse(BaseModel):

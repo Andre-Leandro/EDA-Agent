@@ -1,5 +1,6 @@
 .venv
 *.csv
+!backend/titanic.csv
 .env
 plots/
 __pycache__/
