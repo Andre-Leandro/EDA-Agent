@@ -10,17 +10,40 @@ from .context import get_dataframe
 @tool
 def tool_outliers(input_str: str) -> str:
     """
-    Detects outliers for a numeric column.
-    Input JSON:
+    Detects outliers for a numeric column using statistical methods.
+    
+    Input format (JSON string):
     {
-        "column": "fare",
-        "method": "iqr" | "zscore"
+        "column": "column_name",  # Required: name of the numeric column to analyze
+        "method": "iqr" | "zscore"  # Optional: detection method (default: "iqr")
     }
+    
+    Methods:
+    - "iqr": Interquartile Range method (recommended, detects values beyond 1.5*IQR from Q1/Q3)
+    - "zscore": Z-score method (detects values with |z-score| > 3)
+    
+    Examples:
+    - {"column": "age"} → Uses IQR method by default
+    - {"column": "fare", "method": "iqr"} → Uses IQR method explicitly
+    - {"column": "age", "method": "zscore"} → Uses Z-score method
+    
+    Returns: JSON with outlier count, percentage, bounds, and min/max outlier values.
     """
     df = get_dataframe()
-    params = json.loads(input_str)
+    
+    try:
+        params = json.loads(input_str)
+    except json.JSONDecodeError:
+        return json.dumps({"error": "Invalid JSON input. Expected format: {\"column\": \"column_name\", \"method\": \"iqr\"}"})
+    
     column = params.get("column")
-    method = params.get("method", "iqr")
+    method = params.get("method", "iqr").lower()
+
+    if not column:
+        return json.dumps({
+            "error": "Column parameter is required",
+            "hint": "Specify a numeric column name, e.g., {\"column\": \"age\"}"
+        })
 
     if column not in df.columns:
         return json.dumps({"error": f"Column '{column}' not found"})
