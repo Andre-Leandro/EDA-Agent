@@ -31,7 +31,7 @@ app = FastAPI(title="EDA Agent API", version="1.0.0")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],  # Allow all origins (or specify your Vercel domain)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,7 +48,14 @@ def root():
 @app.get("/health")
 def health():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    has_api_key = bool(os.getenv("GOOGLE_API_KEY"))
+    has_csv = os.path.exists(DEFAULT_CSV_PATH)
+    return {
+        "status": "healthy",
+        "google_api_key_configured": has_api_key,
+        "default_csv_exists": has_csv,
+        "csv_path": DEFAULT_CSV_PATH
+    }
 
 
 @app.post("/ask", response_model=AnswerResponse)
@@ -102,6 +109,9 @@ async def ask_question(
         
         return AnswerResponse(answer=last_message.content, success=True, plot_url=plot_url)
     except Exception as e:
+        print(f"[ERROR] Exception in /ask endpoint: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

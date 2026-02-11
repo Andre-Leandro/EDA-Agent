@@ -10,6 +10,12 @@ from tools import ALL_TOOLS
 
 load_dotenv()
 
+# Verify API key is present
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if not GOOGLE_API_KEY:
+    print("[WARNING] GOOGLE_API_KEY not found in environment variables!")
+    print("[WARNING] The agent will fail if API calls are attempted")
+
 # System prompt for the agent
 SYSTEM_PROMPT = (
     "You are a data-focused assistant that helps users analyze CSV data. "
@@ -48,7 +54,7 @@ SYSTEM_PROMPT = (
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.0-flash",
     temperature=0.1,
-    google_api_key=os.getenv("GOOGLE_API_KEY")
+    google_api_key=GOOGLE_API_KEY
 )
 
 # Create agent with tools
