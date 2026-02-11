@@ -1,0 +1,23 @@
+# FastAPI y servidor
+fastapi
+uvicorn[standard]
+python-multipart
+
+# Data analysis
+pandas
+numpy<2.0.0
+
+# Visualization
+matplotlib
+seaborn
+
+# LLM and Agent framework
+langchain
+langchain-core
+langchain-google-genai
+
+# Environment variables
+python-dotenv
+
+# Validation
+pydantic>=2.0.0

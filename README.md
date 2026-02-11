@@ -46,10 +46,16 @@ pip install -r requirements.txt
 
 ### 3. Configurar variables de entorno
 
-Crea un archivo `.env` en la raíz del proyecto:
+Crea un archivo `.env` en el directorio `backend/`:
 
 ```env
 GOOGLE_API_KEY=tu_api_key_de_gemini
+```
+
+Y otro `.env` en el directorio `frontend/` con la URL del backend:
+
+```env
+VITE_API_URL=http://localhost:8000
 ```
 
 ### 4. Configurar el frontend
@@ -64,8 +70,9 @@ npm install
 ### Iniciar el Backend
 
 ```bash
-# En la raíz del proyecto
+# Desde la raíz del proyecto
 source .venv/bin/activate
+cd backend
 python api.py
 ```
 
@@ -129,41 +136,38 @@ Genera visualizaciones estadísticas automáticas.
 ### Probar las herramientas individualmente
 
 ```bash
-python main.py
+cd backend
+python agent.py
 ```
 
-### Probar la funcionalidad de gráficos
-
-```bash
-python test_plots.py
-```
-
-Este script genera múltiples gráficos de ejemplo en el directorio `plots/`.
-
-### Verificar tests básicos
-
-```bash
-python test.py
-```
+Este script te permite probar el agente directamente desde la terminal.
 
 ## 📁 Estructura del Proyecto
 
 ```
 EDA-Agent/
 ├── .venv/                    # Entorno virtual Python
-├── plots/                    # Gráficos generados automáticamente
-├── frontend/                 # Aplicación React
+├── backend/                  # Backend Python
+│   ├── plots/               # Gráficos generados automáticamente
+│   ├── tools/               # Herramientas del agente
+│   │   ├── schema.py        # Consulta de esquema
+│   │   ├── nulls.py         # Detección de valores nulos
+│   │   ├── describe.py      # Estadísticas descriptivas
+│   │   ├── plot.py          # Generación de gráficos
+│   │   └── context.py       # Contexto del DataFrame
+│   ├── api.py              # FastAPI backend
+│   ├── agent.py            # Agente de LangChain
+│   ├── prepare_dataset.py  # Preparación de datos
+│   ├── titanic.csv         # Dataset de ejemplo
+│   └── .env                # API keys (GOOGLE_API_KEY)
+├── frontend/                # Aplicación React
 │   ├── src/
-│   │   ├── App.jsx          # Componente principal con soporte de imágenes
-│   │   ├── App.css          # Estilos incluyendo plot-container
+│   │   ├── App.jsx         # Componente principal
+│   │   ├── components/     # Componentes UI
 │   │   └── main.jsx
+│   ├── .env                # Variables de entorno (VITE_API_URL)
 │   └── package.json
-├── api.py                    # FastAPI backend con endpoint de gráficos
-├── main.py                   # Script principal del agente
-├── test_plots.py            # Tests de visualización
-├── titanic.csv              # Dataset de ejemplo
-├── VISUALIZATION_GUIDE.md   # Guía completa de visualización
-└── README.md                # Este archivo
+└── README.md               # Este archivo
 ```
 
 ## 🎨 Ejemplos de Preguntas

@@ -1,70 +1,20 @@
-# main.py
-import os, json
-import pandas as pd
+"""
+Plot tool - Generates statistical visualizations.
+"""
+import os
+import json
 import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-from dotenv import load_dotenv
+from langchain_core.tools import tool
+from .context import get_dataframe
 
-load_dotenv()
-
-# --- 0) Loading CSV ---
-DF_PATH = "titanic.csv"
-df = pd.read_csv(DF_PATH)
-
-# --- Create plots directory ---
+# Plots directory
 PLOTS_DIR = "plots"
 os.makedirs(PLOTS_DIR, exist_ok=True)
 
-# --- 1) Defining tools as small, concise commands ---
-from langchain_core.tools import tool
-
-@tool
-def tool_schema(input_str: str) -> str:
-    """
-    Returns column names and data types as JSON.
-    Optional: input_str can contain a number N to return only the first N columns,
-    or a comma-separated list of column names to filter specific columns.
-    Examples: "3" returns first 3 columns, "age, fare" returns only those columns.
-    If empty, returns all columns.
-    """
-    schema = {col: str(dtype) for col, dtype in df.dtypes.items()}
-    
-    if input_str and input_str.strip():
-        input_str = input_str.strip()
-        # Check if it's a number (first N columns)
-        if input_str.isdigit():
-            n = int(input_str)
-            cols = list(df.columns[:n])
-            schema = {col: schema[col] for col in cols}
-        else:
-            # Assume comma-separated column names
-            cols = [c.strip() for c in input_str.split(",") if c.strip() in df.columns]
-            if cols:
-                schema = {col: schema[col] for col in cols}
-    
-    return json.dumps(schema)
-
-@tool
-def tool_nulls(dummy: str) -> str:
-    """Returns columns with the number of missing values as JSON (only columns with >0 missing values)."""
-    nulls = df.isna().sum()
-    result = {col: int(n) for col, n in nulls.items() if n > 0}
-    return json.dumps(result)
-
-@tool
-def tool_describe(input_str: str) -> str:
-    """
-    Returns describe() statistics.
-    Optional: input_str can contain a comma-separated list of columns, e.g. "age, fare".
-    """
-    cols = None
-    if input_str and input_str.strip():
-        cols = [c.strip() for c in input_str.split(",") if c.strip() in df.columns]
-    stats = df[cols].describe() if cols else df.describe()
-    return stats.to_csv(index=True)
 
 @tool
 def tool_plot(input_str: str) -> str:
@@ -73,21 +23,32 @@ def tool_plot(input_str: str) -> str:
     
     Input format (JSON string): {
         "plot_type": "histogram" | "bar" | "boxplot" | "scatter" | "line" | "countplot" | "violin" | "heatmap" | "pairplot",
-        "x": "column_name",  # X-axis column (optional for some plots)
-        "y": "column_name",  # Y-axis column (optional)
+        "x": "column_name",  # X-axis column (optional for histogram/boxplot - auto-detects first numeric)
+        "y": "column_name",  # Y-axis column (optional for boxplot - auto-detects)
         "hue": "column_name",  # Color grouping (optional)
+        "columns": ["col1", "col2", "col3"],  # List of columns for heatmap/pairplot (optional)
         "title": "Plot title"  # Optional custom title
     }
     
     Examples:
-    - Histogram: {"plot_type": "histogram", "x": "age", "title": "Age Distribution"}
-    - Boxplot: {"plot_type": "boxplot", "x": "pclass", "y": "fare"}
+    - Histogram (auto): {"plot_type": "histogram"} # Uses first numeric column automatically
+    - Histogram (specific): {"plot_type": "histogram", "x": "age", "title": "Age Distribution"}
+    - Boxplot (auto): {"plot_type": "boxplot"} # Auto-detects numeric columns
+    - Boxplot (specific): {"plot_type": "boxplot", "x": "pclass", "y": "fare"}
     - Scatter: {"plot_type": "scatter", "x": "age", "y": "fare", "hue": "survived"}
     - Countplot: {"plot_type": "countplot", "x": "sex", "hue": "survived"}
-    - Correlation heatmap: {"plot_type": "heatmap"}
+    - Correlation heatmap (all): {"plot_type": "heatmap"} # Uses all numeric columns
+    - Correlation heatmap (specific): {"plot_type": "heatmap", "columns": ["age", "fare", "pclass"]}
+    - Pairplot: {"plot_type": "pairplot"} # Automatically uses first 4 numeric columns
+    
+    Note: For histogram and boxplot, if columns are not specified, the tool automatically 
+    detects and uses the first numeric column(s). For heatmap and pairplot, "columns" 
+    parameter is optional and all numeric columns will be used if not specified.
     
     Returns: Path to the generated plot image.
     """
+    df = get_dataframe()
+    
     try:
         # Parse input JSON
         params = json.loads(input_str)
@@ -95,7 +56,22 @@ def tool_plot(input_str: str) -> str:
         x_col = params.get("x")
         y_col = params.get("y")
         hue_col = params.get("hue")
+        columns_list = params.get("columns")  # List of columns for heatmap/pairplot
         title = params.get("title", "")
+        
+        # Get numeric columns for auto-detection
+        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        
+        # Auto-detect first numeric column if not specified
+        if not x_col and plot_type in ["histogram", "boxplot"]:
+            if numeric_cols:
+                x_col = numeric_cols[0]
+            else:
+                return json.dumps({"error": "No numeric columns found in dataset"})
+        
+        if not y_col and plot_type == "boxplot" and len(numeric_cols) > 1:
+            # For boxplot, if x is specified but y is not, use first numeric as y
+            y_col = numeric_cols[0] if x_col not in numeric_cols else (numeric_cols[1] if len(numeric_cols) > 1 else numeric_cols[0])
         
         # Validate columns exist
         for col, name in [(x_col, "x"), (y_col, "y"), (hue_col, "hue")]:
@@ -160,21 +136,47 @@ def tool_plot(input_str: str) -> str:
                 title = f"Violin Plot of {y_col}" + (f" by {x_col}" if x_col else "")
                 
         elif plot_type == "heatmap":
-            # Select only numeric columns for correlation
-            numeric_df = df.select_dtypes(include=['number'])
+            # Select columns for correlation heatmap
+            if columns_list:
+                # Use specific columns if provided as a list
+                missing_cols = [c for c in columns_list if c not in df.columns]
+                if missing_cols:
+                    return json.dumps({
+                        "error": f"Columns not found: {missing_cols}",
+                        "available_columns": list(df.columns)
+                    })
+                numeric_df = df[columns_list].select_dtypes(include=['number'])
+            elif x_col or y_col:
+                # Use x and y columns if provided
+                cols_to_use = [c for c in [x_col, y_col] if c]
+                numeric_df = df[cols_to_use].select_dtypes(include=['number'])
+            else:
+                # Use all numeric columns by default
+                numeric_df = df.select_dtypes(include=['number'])
+            
             if numeric_df.empty:
                 return json.dumps({"error": "No numeric columns found for correlation heatmap"})
+            
             corr = numeric_df.corr()
             sns.heatmap(corr, annot=True, cmap='coolwarm', center=0, fmt='.2f')
             if not title:
-                title = "Correlation Heatmap"
+                if columns_list:
+                    title = f"Correlation Heatmap ({', '.join(columns_list)})"
+                else:
+                    title = "Correlation Heatmap"
                 
         elif plot_type == "pairplot":
             # For pairplot, we need to save differently
-            cols_to_plot = [c for c in [x_col, y_col, hue_col] if c]
+            if columns_list:
+                # Use specific columns if provided as a list
+                cols_to_plot = [c for c in columns_list if c in df.columns]
+            else:
+                # Try x, y, hue columns first
+                cols_to_plot = [c for c in [x_col, y_col, hue_col] if c]
+                
             if not cols_to_plot:
-                # Use all numeric columns
-                cols_to_plot = df.select_dtypes(include=['number']).columns.tolist()[:4]  # Limit to 4 for performance
+                # Use all numeric columns (limit to 4 for performance)
+                cols_to_plot = df.select_dtypes(include=['number']).columns.tolist()[:4]
             
             pairplot = sns.pairplot(df[cols_to_plot], hue=hue_col if hue_col in cols_to_plot else None)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -218,72 +220,3 @@ def tool_plot(input_str: str) -> str:
         return json.dumps({"error": "Invalid JSON format in input. Please provide valid JSON."})
     except Exception as e:
         return json.dumps({"error": f"Failed to generate plot: {str(e)}"})
-
-# --- 2) Registering tools for LangChain ---
-tools = [tool_schema, tool_nulls, tool_describe, tool_plot]
-
-# --- 3) Configure LLM (Gemini) ---
-from langchain_google_genai import ChatGoogleGenerativeAI
-
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
-    temperature=0.1,
-    google_api_key=os.getenv("GOOGLE_API_KEY")
-)
-
-# --- 4) Narrow Policy/Prompt (Agent Behavior) ---
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-
-SYSTEM_PROMPT = (
-    "You are a data-focused assistant that helps users analyze CSV data. "
-    "When a question requires information from the CSV, use the appropriate tool. "
-    "Use only one tool call per step if possible. "
-    "IMPORTANT: After receiving a tool result, interpret it and provide a clear, "
-    "human-readable answer. Do NOT show code or function calls in your response. "
-    "Format your answers in a structured and easy-to-read way.\n\n"
-    "VISUALIZATION: When users ask for charts or plots, use tool_plot. "
-    "First, use tool_schema to check available columns, then generate the appropriate plot. "
-    "When a plot is generated successfully, inform the user that the visualization has been created "
-    "and describe what it shows. The plot will be saved in the 'plots' directory.\n\n"
-    "Available tools:\n{tools}\n"
-    "Use only these tools: {tool_names}."
-)
-
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", SYSTEM_PROMPT),
-        ("human", "{input}"),
-        MessagesPlaceholder(variable_name="agent_scratchpad"),
-    ]
-)
-
-_tool_desc = "\n".join(f"- {t.name}: {t.description}" for t in tools)
-_tool_names = ", ".join(t.name for t in tools)
-prompt = prompt.partial(tools=_tool_desc, tool_names=_tool_names)
-
-# --- 5) Create & Run Tool-Calling Agent ---
-from langchain.agents import create_agent
-
-SYSTEM_PROMPT_TEXT = (
-    "You are a data-focused assistant that helps users analyze CSV data. "
-    "When a question requires information from the CSV, use the appropriate tool. "
-    "Use only one tool call per step if possible. "
-    "IMPORTANT: After receiving a tool result, interpret it and provide a clear, "
-    "human-readable answer. Do NOT show raw JSON or code blocks in your response. "
-    "Format lists as bullet points. For example, instead of showing {'Age': 177}, "
-    "write '- Age: 177 missing values'."
-)
-
-agent_executor = create_agent(model=llm, tools=tools, system_prompt=SYSTEM_PROMPT_TEXT)
-
-if __name__ == "__main__":
-    user_query = "Give me a statistical summary of the ‘age’ column."
-    try:
-        result = agent_executor.invoke({"messages": [("human", user_query)]})
-        print("\n=== AGENT ANSWER ===")
-        # Get the last message from the result
-        last_message = result["messages"][-1]
-        print(last_message.content)
-    except Exception as e:
-        print(f"\n=== ERROR: {e} ===")
-        print("\nIf you see a quota error, wait a few seconds and try again.")

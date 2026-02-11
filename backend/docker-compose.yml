@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: eda-agent-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./plots:/app/plots  # Opcional: persiste plots entre reinicios
+    restart: unless-stopped
+    environment:
+      - MPLBACKEND=Agg
