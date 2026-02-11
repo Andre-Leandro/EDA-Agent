@@ -1,0 +1,44 @@
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+.venv
+venv/
+ENV/
+env/
+
+# Environment files
+.env
+.env.local
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Plots directory (se crea en runtime)
+plots/
+*.png
+*.jpg
+*.jpeg
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Documentation
+README.md
+
+# Tests
+tests/
+*.test.py
