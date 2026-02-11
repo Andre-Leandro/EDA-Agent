@@ -30,8 +30,14 @@ function App() {
   const [error, setError] = useState('')
   const [history, setHistory] = useState([])
   const [plotUrl, setPlotUrl] = useState(null)
-  const [datasetType, setDatasetType] = useState('default')
-  const [uploadedFileName, setUploadedFileName] = useState('')
+  const [datasetType, setDatasetType] = useState(() => {
+    // Load dataset type from localStorage
+    return localStorage.getItem('eda_dataset_type') || 'default'
+  })
+  const [uploadedFileName, setUploadedFileName] = useState(() => {
+    // Load uploaded file name from localStorage
+    return localStorage.getItem('eda_uploaded_file_name') || ''
+  })
   const [uploadedFile, setUploadedFile] = useState(null) // Store the actual file
   const [isDragging, setIsDragging] = useState(false)
   const [copiedMessageIndex, setCopiedMessageIndex] = useState(null)
@@ -45,7 +51,7 @@ function App() {
     return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
   })
 
-  // Load history from localStorage on mount
+  // Load history and CSV file from localStorage on mount
   useEffect(() => {
     if (saveToLocalStorage) {
       const savedHistory = localStorage.getItem('eda_chat_history')
@@ -55,6 +61,20 @@ function App() {
         } catch (e) {
           console.error('Error loading history:', e)
         }
+      }
+    }
+    
+    // Load uploaded CSV file from localStorage
+    const savedFileContent = localStorage.getItem('eda_uploaded_file_content')
+    const savedFileName = localStorage.getItem('eda_uploaded_file_name')
+    if (savedFileContent && savedFileName) {
+      try {
+        // Reconstruct the File object from saved content
+        const blob = new Blob([savedFileContent], { type: 'text/csv' })
+        const file = new File([blob], savedFileName, { type: 'text/csv' })
+        setUploadedFile(file)
+      } catch (e) {
+        console.error('Error loading saved CSV:', e)
       }
     }
   }, [])
@@ -171,14 +191,31 @@ function App() {
       return
     }
 
-    // Store the file for later use in ask requests
-    setUploadedFile(file)
-    setUploadedFileName(file.name)
-    setDatasetType('custom')
-    setHistory([]) // Clear history when switching datasets
-    setAnswer('')
-    setPlotUrl(null)
-    setError('')
+    try {
+      // Read file content to save in localStorage
+      const fileContent = await file.text()
+      
+      // Store the file for later use in ask requests
+      setUploadedFile(file)
+      setUploadedFileName(file.name)
+      setDatasetType('custom')
+      
+      // Always clear history when uploading a new file (even if already in custom mode)
+      setHistory([])
+      localStorage.removeItem('eda_chat_history')
+      
+      // Save file to localStorage for persistence across refreshes
+      localStorage.setItem('eda_uploaded_file_content', fileContent)
+      localStorage.setItem('eda_uploaded_file_name', file.name)
+      localStorage.setItem('eda_dataset_type', 'custom')
+      
+      setAnswer('')
+      setPlotUrl(null)
+      setError('')
+    } catch (e) {
+      console.error('Error processing file:', e)
+      setError('Error processing file. Please try again.')
+    }
   }
 
   const handleDragOver = (e) => {
@@ -201,17 +238,34 @@ function App() {
   }
 
   const handleDatasetChange = (type) => {
-    if (type === 'default') {
-      setDatasetType('default')
-      setUploadedFileName('')
-      setUploadedFile(null)
-      setHistory([])
-      setAnswer('')
-      setPlotUrl(null)
+    // Cambiar el tipo de dataset
+    setDatasetType(type)
+    localStorage.setItem('eda_dataset_type', type)
+    
+    // Limpiar historial al cambiar entre datasets
+    setHistory([])
+    localStorage.removeItem('eda_chat_history')
+    setAnswer('')
+    setPlotUrl(null)
+    
+    // Si cambia a custom pero no hay archivo, asegurarse de limpiar
+    if (type === 'custom' && !uploadedFileName) {
       setError('')
-    } else {
-      setDatasetType('custom')
     }
+  }
+  
+  const deleteUploadedCSV = () => {
+    setDatasetType('default')
+    setUploadedFileName('')
+    setUploadedFile(null)
+    setHistory([])
+    localStorage.removeItem('eda_chat_history')
+    localStorage.removeItem('eda_uploaded_file_content')
+    localStorage.removeItem('eda_uploaded_file_name')
+    localStorage.setItem('eda_dataset_type', 'default')
+    setAnswer('')
+    setPlotUrl(null)
+    setError('')
   }
 
   return (
@@ -265,12 +319,27 @@ function App() {
                 onChange={(e) => handleDatasetChange(e.target.value)}
                 className="bg-transparent text-sm font-medium text-black outline-none"
               >
-                <option value="default">Default (Titanic)</option>
-                <option value="custom">Upload Custom CSV</option>
+                <option value="default">Titanic</option>
+                {uploadedFileName ? (
+                  <option value="custom">{uploadedFileName}</option>
+                ) : (
+                  <option value="custom">Upload Custom CSV</option>
+                )}
               </select>
             </div>
+            
+            {/* Delete CSV Button - only shown when custom CSV is selected */}
             {datasetType === 'custom' && uploadedFileName && (
-              <span className="text-xs text-green-600 font-medium">📄 {uploadedFileName}</span>
+              <button
+                onClick={deleteUploadedCSV}
+                className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-red-700 transition-all hover:bg-red-100"
+                title="Delete uploaded CSV"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span className="text-xs font-medium">Eliminar CSV</span>
+              </button>
             )}
           </div>
         </div>
