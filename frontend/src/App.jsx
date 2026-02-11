@@ -4,11 +4,14 @@ import { Button } from './components/ui/button'
 import { Textarea } from './components/ui/textarea'
 import { Card, CardContent } from './components/ui/card'
 
+// Get API URL from environment variable, fallback to localhost
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
 function App() {
   // Function to extract plot URLs from text
   const extractPlotUrl = (text) => {
     const urlMatch = text.match(/plots\/plot_\w+_\d+\.png/)
-    return urlMatch ? `http://localhost:8000/${urlMatch[0]}` : null
+    return urlMatch ? `${API_URL}/${urlMatch[0]}` : null
   }
 
   // Function to convert markdown bold (**text**) to HTML
@@ -95,7 +98,7 @@ function App() {
         formData.append('file', uploadedFile)
       }
       
-      const response = await fetch('http://localhost:8000/ask', {
+      const response = await fetch(`${API_URL}/ask`, {
         method: 'POST',
         body: formData,
       })
@@ -107,7 +110,7 @@ function App() {
       const data = await response.json()
       console.log('API Response:', data) // Debug log
       setAnswer(data.answer)
-      const plotUrl = data.plot_url ? `http://localhost:8000${data.plot_url}` : null
+      const plotUrl = data.plot_url ? `${API_URL}${data.plot_url}` : null
       console.log('Plot URL:', plotUrl) // Debug log
       setPlotUrl(plotUrl)
       setHistory([...history, { question, answer: data.answer, plotUrl }])
