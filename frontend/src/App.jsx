@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import pokerCard from './assets/poker-card.png'
 import { Button } from './components/ui/button'
 import { Textarea } from './components/ui/textarea'
@@ -32,10 +32,52 @@ function App() {
   const [uploadedFile, setUploadedFile] = useState(null) // Store the actual file
   const [isDragging, setIsDragging] = useState(false)
   const [copiedMessageIndex, setCopiedMessageIndex] = useState(null)
+  const [saveToLocalStorage, setSaveToLocalStorage] = useState(() => {
+    // Load preference from localStorage
+    const saved = localStorage.getItem('eda_save_preference')
+    return saved ? JSON.parse(saved) : true // Default to enabled
+  })
   const [sessionId] = useState(() => {
     // Generate unique session ID when component loads
     return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
   })
+
+  // Load history from localStorage on mount
+  useEffect(() => {
+    if (saveToLocalStorage) {
+      const savedHistory = localStorage.getItem('eda_chat_history')
+      if (savedHistory) {
+        try {
+          setHistory(JSON.parse(savedHistory))
+        } catch (e) {
+          console.error('Error loading history:', e)
+        }
+      }
+    }
+  }, [])
+
+  // Save history to localStorage whenever it changes
+  useEffect(() => {
+    if (saveToLocalStorage && history.length > 0) {
+      localStorage.setItem('eda_chat_history', JSON.stringify(history))
+    }
+  }, [history, saveToLocalStorage])
+
+  // Save preference whenever it changes
+  useEffect(() => {
+    localStorage.setItem('eda_save_preference', JSON.stringify(saveToLocalStorage))
+    if (!saveToLocalStorage) {
+      // If disabled, clear history from localStorage
+      localStorage.removeItem('eda_chat_history')
+    }
+  }, [saveToLocalStorage])
+
+  const clearHistory = () => {
+    setHistory([])
+    setAnswer('')
+    setPlotUrl(null)
+    localStorage.removeItem('eda_chat_history')
+  }
 
   const askQuestion = async () => {
     if (!question.trim()) return
@@ -181,8 +223,38 @@ function App() {
             </div>
           </div>
           
-          {/* Dataset Selector */}
+          {/* Dataset Selector and Controls */}
           <div className="flex items-center gap-3">
+            {/* Save to Browser Toggle */}
+            <button
+              onClick={() => setSaveToLocalStorage(!saveToLocalStorage)}
+              className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 transition-all ${
+                saveToLocalStorage 
+                  ? 'border-green-500 bg-green-50 text-green-700' 
+                  : 'border-black/20 bg-white/90 text-neutral-600'
+              }`}
+              title={saveToLocalStorage ? 'Saving to browser enabled' : 'Saving to browser disabled'}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+              </svg>
+              <span className="text-xs font-medium">{saveToLocalStorage ? 'Save: ON' : 'Save: OFF'}</span>
+            </button>
+            
+            {/* Clear History Button */}
+            {history.length > 0 && (
+              <button
+                onClick={clearHistory}
+                className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-red-700 transition-all hover:bg-red-100"
+                title="Clear chat history"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                <span className="text-xs font-medium">Clear</span>
+              </button>
+            )}
+            
             <div className="flex items-center gap-2 rounded-lg border border-black/20 bg-white/90 px-3 py-2">
               <span className="text-sm font-medium text-neutral-600">Dataset:</span>
               <select 
@@ -223,12 +295,18 @@ function App() {
                 </div>
                 <h3 className="text-lg font-medium text-black">Upload your CSV file</h3>
                 <p className="mt-2 text-sm text-neutral-600">Drag and drop your CSV file here, or click to browse</p>
-                <input 
-                  type="file" 
-                  accept=".csv" 
-                  onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0])}
-                  className="mt-4 block w-full text-sm text-neutral-500 file:mr-4 file:rounded-full file:border-0 file:bg-black file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-neutral-800"
-                />
+                <label className="mt-4 flex cursor-pointer items-center justify-center">
+                  <input 
+                    type="file" 
+                    accept=".csv" 
+                    onChange={(e) => e.target.files[0] && handleFileUpload(e.target.files[0])}
+                    className="hidden"
+                    lang="en"
+                  />
+                  <span className="rounded-full border-0 bg-black px-6 py-2 text-sm font-medium text-white transition hover:bg-neutral-800">
+                    Choose File
+                  </span>
+                </label>
               </div>
             </div>
           )}
