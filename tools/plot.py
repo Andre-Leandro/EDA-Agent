@@ -23,24 +23,27 @@ def tool_plot(input_str: str) -> str:
     
     Input format (JSON string): {
         "plot_type": "histogram" | "bar" | "boxplot" | "scatter" | "line" | "countplot" | "violin" | "heatmap" | "pairplot",
-        "x": "column_name",  # X-axis column (optional for some plots)
-        "y": "column_name",  # Y-axis column (optional)
+        "x": "column_name",  # X-axis column (optional for histogram/boxplot - auto-detects first numeric)
+        "y": "column_name",  # Y-axis column (optional for boxplot - auto-detects)
         "hue": "column_name",  # Color grouping (optional)
         "columns": ["col1", "col2", "col3"],  # List of columns for heatmap/pairplot (optional)
         "title": "Plot title"  # Optional custom title
     }
     
     Examples:
-    - Histogram: {"plot_type": "histogram", "x": "age", "title": "Age Distribution"}
-    - Boxplot: {"plot_type": "boxplot", "x": "pclass", "y": "fare"}
+    - Histogram (auto): {"plot_type": "histogram"} # Uses first numeric column automatically
+    - Histogram (specific): {"plot_type": "histogram", "x": "age", "title": "Age Distribution"}
+    - Boxplot (auto): {"plot_type": "boxplot"} # Auto-detects numeric columns
+    - Boxplot (specific): {"plot_type": "boxplot", "x": "pclass", "y": "fare"}
     - Scatter: {"plot_type": "scatter", "x": "age", "y": "fare", "hue": "survived"}
     - Countplot: {"plot_type": "countplot", "x": "sex", "hue": "survived"}
     - Correlation heatmap (all): {"plot_type": "heatmap"} # Uses all numeric columns
     - Correlation heatmap (specific): {"plot_type": "heatmap", "columns": ["age", "fare", "pclass"]}
     - Pairplot: {"plot_type": "pairplot"} # Automatically uses first 4 numeric columns
     
-    Note: For heatmap and pairplot, "columns" parameter is optional. If not specified, 
-    all numeric columns will be used automatically.
+    Note: For histogram and boxplot, if columns are not specified, the tool automatically 
+    detects and uses the first numeric column(s). For heatmap and pairplot, "columns" 
+    parameter is optional and all numeric columns will be used if not specified.
     
     Returns: Path to the generated plot image.
     """
@@ -55,6 +58,20 @@ def tool_plot(input_str: str) -> str:
         hue_col = params.get("hue")
         columns_list = params.get("columns")  # List of columns for heatmap/pairplot
         title = params.get("title", "")
+        
+        # Get numeric columns for auto-detection
+        numeric_cols = df.select_dtypes(include=['number']).columns.tolist()
+        
+        # Auto-detect first numeric column if not specified
+        if not x_col and plot_type in ["histogram", "boxplot"]:
+            if numeric_cols:
+                x_col = numeric_cols[0]
+            else:
+                return json.dumps({"error": "No numeric columns found in dataset"})
+        
+        if not y_col and plot_type == "boxplot" and len(numeric_cols) > 1:
+            # For boxplot, if x is specified but y is not, use first numeric as y
+            y_col = numeric_cols[0] if x_col not in numeric_cols else (numeric_cols[1] if len(numeric_cols) > 1 else numeric_cols[0])
         
         # Validate columns exist
         for col, name in [(x_col, "x"), (y_col, "y"), (hue_col, "hue")]:

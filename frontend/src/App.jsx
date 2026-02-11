@@ -31,6 +31,7 @@ function App() {
   const [uploadedFileName, setUploadedFileName] = useState('')
   const [uploadedFile, setUploadedFile] = useState(null) // Store the actual file
   const [isDragging, setIsDragging] = useState(false)
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState(null)
   const [sessionId] = useState(() => {
     // Generate unique session ID when component loads
     return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9)
@@ -91,6 +92,16 @@ function App() {
     "Create a histogram of the first numeric column",
     "Show me statistics for all numeric columns",
   ]
+
+  const copyToClipboard = async (text, index) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedMessageIndex(index)
+      setTimeout(() => setCopiedMessageIndex(null), 2000)
+    } catch (error) {
+      console.error('Error copying to clipboard:', error)
+    }
+  }
 
   const downloadImage = async (url) => {
     try {
@@ -190,8 +201,8 @@ function App() {
         </div>
       </header>
 
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col pb-48 pt-4">
-        <div className="flex-1 space-y-4 overflow-y-auto px-4">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col pb-56 pt-4">
+        <div className="flex-1 space-y-4 overflow-y-auto px-4 mb-4">
           {/* File Upload Area for Custom Dataset */}
           {datasetType === 'custom' && !uploadedFileName && (
             <div className="mx-auto max-w-md">
@@ -246,12 +257,27 @@ function App() {
                   </div>
                 </div>
                 <div className="flex justify-start">
-                  <div className="max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
+                  <div className="group relative max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
                     <p className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Agent</p>
                     <div
                       className="leading-relaxed"
                       dangerouslySetInnerHTML={renderMarkdown(item.answer)}
                     />
+                    <button
+                      onClick={() => copyToClipboard(item.answer, index)}
+                      className="absolute right-2 top-2 rounded-lg bg-white/90 p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-neutral-100 group-hover:opacity-100"
+                      title="Copy message"
+                    >
+                      {copiedMessageIndex === index ? (
+                        <svg className="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      ) : (
+                        <svg className="h-4 w-4 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                        </svg>
+                      )}
+                    </button>
                     {item.plotUrl && (
                       <div className="mt-3 overflow-hidden rounded-xl border border-black/10 bg-white/80">
                         <img src={item.plotUrl} alt="Generated plot" className="w-full" />
@@ -274,9 +300,24 @@ function App() {
             ))}
 
           {history.length === 0 && answer && (
-            <div className="max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
+            <div className="group relative max-w-[90%] rounded-2xl border border-black/10 bg-white/90 px-4 py-3 text-sm text-black shadow">
               <p className="mb-1 text-[11px] uppercase tracking-wide text-neutral-500">Agent</p>
               <div dangerouslySetInnerHTML={renderMarkdown(answer)} />
+              <button
+                onClick={() => copyToClipboard(answer, 'single')}
+                className="absolute right-2 top-2 rounded-lg bg-white/90 p-1.5 opacity-0 shadow-sm transition-opacity hover:bg-neutral-100 group-hover:opacity-100"
+                title="Copy message"
+              >
+                {copiedMessageIndex === 'single' ? (
+                  <svg className="h-4 w-4 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4 text-neutral-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
             </div>
           )}
 
