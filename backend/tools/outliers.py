@@ -5,7 +5,7 @@ import json
 import pandas as pd
 from langchain_core.tools import tool
 from .context import get_dataframe
-
+from .utils import find_column_match
 
 @tool
 def tool_outliers(input_str: str) -> str:
@@ -45,16 +45,24 @@ def tool_outliers(input_str: str) -> str:
             "hint": "Specify a numeric column name, e.g., {\"column\": \"age\"}"
         })
 
-    if column not in df.columns:
-        return json.dumps({"error": f"Column '{column}' not found"})
+    # Use fuzzy matching to find the column
+    matched_column = find_column_match(column, list(df.columns), cutoff=0.6)
+    
+    if not matched_column:
+        # Try with lower cutoff for suggestions
+        suggestion = find_column_match(column, list(df.columns), cutoff=0.4)
+        error_msg = f"Column '{column}' not found."
+        if suggestion:
+            error_msg += f" Did you mean '{suggestion}'?"
+        return json.dumps({"error": error_msg})
 
-    s = df[column].dropna()
+    s = df[matched_column].dropna()
 
     if not pd.api.types.is_numeric_dtype(s):
-        return json.dumps({"error": f"Column '{column}' is not numeric"})
+        return json.dumps({"error": f"Column '{matched_column}' is not numeric"})
 
     result = {
-        "column": column,
+        "column": matched_column,  # Use the actual matched column name
         "method": method
     }
 

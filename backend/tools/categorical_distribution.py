@@ -4,7 +4,7 @@ Categorical Distribution tool - Frequency distribution for categorical columns.
 import json
 from langchain_core.tools import tool
 from .context import get_dataframe
-
+from .utils import find_column_match
 
 @tool
 def tool_categorical_distribution(input_str: str) -> str:
@@ -21,10 +21,18 @@ def tool_categorical_distribution(input_str: str) -> str:
     column = params.get("column")
     top_k = int(params.get("top_k", 10))
 
-    if column not in df.columns:
-        return json.dumps({"error": f"Column '{column}' not found"})
+    # Use fuzzy matching to find the column
+    matched_column = find_column_match(column, list(df.columns), cutoff=0.6)
+    
+    if not matched_column:
+        # Try with lower cutoff for suggestions  
+        suggestion = find_column_match(column, list(df.columns), cutoff=0.4)
+        error_msg = f"Column '{column}' not found."
+        if suggestion:
+            error_msg += f" Did you mean '{suggestion}'?"
+        return json.dumps({"error": error_msg})
 
-    s = df[column].dropna()
+    s = df[matched_column].dropna()
     total = len(s)
 
     counts = s.value_counts()
@@ -46,7 +54,7 @@ def tool_categorical_distribution(input_str: str) -> str:
         }
 
     return json.dumps({
-        "column": column,
+        "column": matched_column,  # Use the actual matched column name
         "cardinality": int(counts.size),
         "distribution": distribution
     })
