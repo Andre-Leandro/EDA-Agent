@@ -82,8 +82,47 @@ async def ask_question(
         if dataset_type == "custom" and file:
             # Read the uploaded CSV file
             contents = await file.read()
-            df = pd.read_csv(io.BytesIO(contents))
+            
+            # Try different encodings and parse CSV with better type inference
+            try:
+                df = pd.read_csv(
+                    io.BytesIO(contents),
+                    encoding='utf-8',
+                    sep=None,  # Auto-detect separator (comma, semicolon, tab, etc.)
+                    engine='python',  # More flexible parser
+                    skipinitialspace=True,  # Remove spaces after delimiter
+                    na_values=['', 'NA', 'N/A', 'null', 'NULL', 'None', '-', '?']  # Common null values
+                )
+            except UnicodeDecodeError:
+                # Try with latin-1 encoding if utf-8 fails
+                df = pd.read_csv(
+                    io.BytesIO(contents),
+                    encoding='latin-1',
+                    sep=None,
+                    engine='python',
+                    skipinitialspace=True,
+                    na_values=['', 'NA', 'N/A', 'null', 'NULL', 'None', '-', '?']
+                )
+            
             print(f"[DEBUG] Loaded custom CSV: {file.filename}, shape: {df.shape}")
+            print(f"[DEBUG] Initial dtypes: {df.dtypes.to_dict()}")
+            
+            # Try to convert columns to numeric when possible
+            for col in df.columns:
+                if df[col].dtype == 'object':  # If column is string/object type
+                    try:
+                        # Try to convert to numeric, keeping non-numeric as NaN
+                        converted = pd.to_numeric(df[col], errors='coerce')
+                        # Only replace if at least 50% of values are numeric
+                        if converted.notna().sum() / len(df) > 0.5:
+                            df[col] = converted
+                            print(f"[DEBUG] Converted column '{col}' to numeric")
+                    except Exception as e:
+                        print(f"[DEBUG] Could not convert '{col}' to numeric: {e}")
+            
+            print(f"[DEBUG] Final dtypes after conversion: {df.dtypes.to_dict()}")
+            print(f"[DEBUG] Numeric columns: {df.select_dtypes(include=['number']).columns.tolist()}")
+            
         else:
             # Use default Titanic dataset
             df = pd.read_csv(DEFAULT_CSV_PATH)
@@ -114,7 +153,21 @@ async def ask_question(
         print(f"[ERROR] Exception in /ask endpoint: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        
+        # Handle specific API quota/rate limit errors
+        error_message = str(e)
+        if "429" in error_message or "RESOURCE_EXHAUSTED" in error_message:
+            raise HTTPException(
+                status_code=429,
+                detail="API quota exceeded. The Google Gemini API has rate limits. Please wait a moment and try again, or upgrade your API key for higher limits."
+            )
+        elif "RATE_LIMIT_EXCEEDED" in error_message:
+            raise HTTPException(
+                status_code=429,
+                detail="Too many requests. Please wait a moment before trying again."
+            )
+        else:
+            raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/plots/{filename}")

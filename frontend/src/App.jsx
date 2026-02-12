@@ -124,7 +124,23 @@ function App() {
       })
       
       if (!response.ok) {
-        throw new Error(`Error: ${response.status}`)
+        // Try to get detailed error message from backend
+        let errorMessage = `Error: ${response.status}`
+        try {
+          const errorData = await response.json()
+          if (errorData.detail) {
+            errorMessage = errorData.detail
+          }
+        } catch (e) {
+          // If JSON parsing fails, use default error
+        }
+        
+        // Special handling for rate limit errors
+        if (response.status === 429) {
+          errorMessage = '⚠️ API Quota Exceeded: The Google Gemini API has reached its rate limit. Please wait 1-2 minutes and try again. If this persists, consider upgrading your API key for higher limits.'
+        }
+        
+        throw new Error(errorMessage)
       }
       
       const data = await response.json()
