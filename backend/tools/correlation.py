@@ -35,12 +35,13 @@ def tool_correlation(input_str: str) -> str:
         for nf in not_found:
             sugg, _, _ = validate_and_match_columns([nf], list(df.columns), cutoff=0.4)
             if sugg:
-                suggestions.append(f"'{nf}' → maybe '{sugg[0]}'")
+                suggestions.append("'{}' -> maybe '{}'".format(nf, sugg[0]))
             else:
-                suggestions.append(f"'{nf}' (no match found)")
+                suggestions.append("'{}' (no match found)".format(nf))
         
+        suggestions_text = ", ".join(suggestions)
         return json.dumps({
-            "error": f"Some columns could not be matched: {', '.join(suggestions)}",
+            "error": f"Some columns could not be matched: {suggestions_text}",
             "available_columns": list(df.columns)
         })
     
