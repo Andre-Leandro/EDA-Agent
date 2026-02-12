@@ -4,7 +4,7 @@ Schema tool - Returns column names and data types.
 import json
 from langchain_core.tools import tool
 from .context import get_dataframe
-
+from .utils import validate_and_match_columns, get_correction_message
 
 @tool
 def tool_schema(input_str: str) -> str:
@@ -17,6 +17,7 @@ def tool_schema(input_str: str) -> str:
     """
     df = get_dataframe()
     schema = {col: str(dtype) for col, dtype in df.dtypes.items()}
+    corrections = []
     
     if input_str and input_str.strip():
         input_str = input_str.strip()
@@ -25,8 +26,17 @@ def tool_schema(input_str: str) -> str:
             cols = list(df.columns[:n])
             schema = {col: schema[col] for col in cols}
         else:
-            cols = [c.strip() for c in input_str.split(",") if c.strip() in df.columns]
-            if cols:
-                schema = {col: schema[col] for col in cols}
+            requested_cols = [c.strip() for c in input_str.split(",") if c.strip()]
+            # Use fuzzy matching for column names
+            matched_cols, corrections, not_found = validate_and_match_columns(
+                requested_cols, list(df.columns), cutoff=0.6
+            )
+            
+            if matched_cols:
+                schema = {col: schema[col] for col in matched_cols}
     
-    return json.dumps(schema)
+    result = {"schema": schema}
+    if corrections:
+        result["note"] = get_correction_message(corrections)
+    
+    return json.dumps(result)

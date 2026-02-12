@@ -10,6 +10,7 @@ import seaborn as sns
 from datetime import datetime
 from langchain_core.tools import tool
 from .context import get_dataframe
+from .utils import validate_and_match_columns, get_correction_message
 
 # Plots directory
 PLOTS_DIR = "plots"
@@ -73,13 +74,39 @@ def tool_plot(input_str: str) -> str:
             # For boxplot, if x is specified but y is not, use first numeric as y
             y_col = numeric_cols[0] if x_col not in numeric_cols else (numeric_cols[1] if len(numeric_cols) > 1 else numeric_cols[0])
         
-        # Validate columns exist
-        for col, name in [(x_col, "x"), (y_col, "y"), (hue_col, "hue")]:
-            if col and col not in df.columns:
-                return json.dumps({
-                    "error": f"Column '{col}' not found in dataset.",
-                    "available_columns": list(df.columns)
-                })
+        # Validate and match columns using fuzzy matching
+        all_requested_cols = [(x_col, "x"), (y_col, "y"), (hue_col, "hue")]
+        corrections_made = []
+        
+        for col, param_name in all_requested_cols:
+            if col:
+                matched, corrections, not_found = validate_and_match_columns(
+                    [col], list(df.columns), cutoff=0.6
+                )
+                
+                if not_found:
+                    # Try with a lower cutoff for suggestions
+                    suggestions, _, _ = validate_and_match_columns(
+                        [col], list(df.columns), cutoff=0.4
+                    )
+                    error_msg = f"Column '{col}' not found in dataset."
+                    if suggestions:
+                        error_msg += f" Did you mean: {', '.join([f"'{s}'" for s in suggestions[:3]])}?"
+                    return json.dumps({
+                        "error": error_msg,
+                        "available_columns": list(df.columns)
+                    })
+                
+                # Update the column variable with the matched name
+                if corrections:
+                    corrections_made.extend(corrections)
+                    matched_col = matched[0]
+                    if param_name == "x":
+                        x_col = matched_col
+                    elif param_name == "y":
+                        y_col = matched_col
+                    elif param_name == "hue":
+                        hue_col = matched_col
         
         # Create figure
         plt.figure(figsize=(10, 6))
@@ -138,14 +165,30 @@ def tool_plot(input_str: str) -> str:
         elif plot_type == "heatmap":
             # Select columns for correlation heatmap
             if columns_list:
-                # Use specific columns if provided as a list
-                missing_cols = [c for c in columns_list if c not in df.columns]
-                if missing_cols:
+                # Use fuzzy matching for the column list
+                matched_cols, heatmap_corrections, not_found = validate_and_match_columns(
+                    columns_list, list(df.columns), cutoff=0.6
+                )
+                
+                if not_found:
+                    # Try with lower cutoff for suggestions
+                    suggestions = []
+                    for nf in not_found:
+                        sugg, _, _ = validate_and_match_columns([nf], list(df.columns), cutoff=0.4)
+                        if sugg:
+                            suggestions.append(f"'{nf}' → maybe '{sugg[0]}'")
+                        else:
+                            suggestions.append(f"'{nf}' (no match found)")
+                    
                     return json.dumps({
-                        "error": f"Columns not found: {missing_cols}",
+                        "error": f"Some columns could not be matched: {', '.join(suggestions)}",
                         "available_columns": list(df.columns)
                     })
-                numeric_df = df[columns_list].select_dtypes(include=['number'])
+                
+                if heatmap_corrections:
+                    corrections_made.extend(heatmap_corrections)
+                
+                numeric_df = df[matched_cols].select_dtypes(include=['number'])
             elif x_col or y_col:
                 # Use x and y columns if provided
                 cols_to_use = [c for c in [x_col, y_col] if c]
@@ -209,11 +252,16 @@ def tool_plot(input_str: str) -> str:
         plt.savefig(filepath, dpi=100, bbox_inches='tight')
         plt.close()
         
+        # Build success message with corrections if any
+        message = f"{plot_type.capitalize()} plot generated successfully!"
+        if corrections_made:
+            message += " " + get_correction_message(corrections_made)
+        
         return json.dumps({
             "success": True,
             "plot_path": filepath,
             "plot_url": f"/plots/{filename}",
-            "message": f"{plot_type.capitalize()} plot generated successfully!"
+            "message": message
         })
         
     except json.JSONDecodeError:

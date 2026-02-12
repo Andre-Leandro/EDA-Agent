@@ -5,7 +5,7 @@ import json
 import pandas as pd
 from langchain_core.tools import tool
 from .context import get_dataframe
-
+from .utils import find_column_match
 
 @tool
 def tool_column_profile(column: str) -> str:
@@ -15,17 +15,26 @@ def tool_column_profile(column: str) -> str:
     """
     df = get_dataframe()
     
-    if column not in df.columns:
+    # Use fuzzy matching to find the column
+    matched_column = find_column_match(column, list(df.columns), cutoff=0.6)
+    
+    if not matched_column:
+        # Try with lower cutoff for suggestions
+        suggestion = find_column_match(column, list(df.columns), cutoff=0.4)
+        error_msg = f"Column '{column}' not found."
+        if suggestion:
+            error_msg += f" Did you mean '{suggestion}'?"
         return json.dumps({
-            "error": f"Column '{column}' not found",
+            "error": error_msg,
             "available_columns": list(df.columns)
         })
-
-    s = df[column]
+    
+    # Use the matched column name
+    s = df[matched_column]
     total = len(s)
 
     profile = {
-        "column": column,
+        "column": matched_column,  # Use the actual matched column name
         "dtype": str(s.dtype),
         "missing": {
             "count": int(s.isna().sum()),
