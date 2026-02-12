@@ -47,7 +47,14 @@ SYSTEM_PROMPT = (
     "\n"
     "After generating a plot, describe what the visualization shows in natural language. "
     "NEVER mention file paths, directories, or technical implementation details. "
-    "Just describe the visualization naturally."
+    "Use the 'data_summary' field from the tool result to describe the actual data shown in the plot. "
+    "For example:\n"
+    "- For histograms: mention the column name, distribution shape, mean, median, and range from data_summary\n"
+    "- For countplots: mention the actual frequencies and categories from data_summary\n"
+    "- For boxplots: mention median, quartiles, and outlier count from data_summary\n"
+    "- For scatter plots: mention the correlation value from data_summary\n"
+    "- For heatmaps: describe the strongest correlations from data_summary\n"
+    "Always base your description on the real data provided in data_summary, not on generic assumptions."
 )
 
 # Initialize LLM

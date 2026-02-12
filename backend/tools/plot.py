@@ -113,6 +113,9 @@ def tool_plot(input_str: str) -> str:
         plt.figure(figsize=(10, 6))
         sns.set_style("whitegrid")
         
+        # Variables to store data insights
+        data_summary = {}
+        
         # Generate plot based on type
         if plot_type == "histogram":
             if not x_col:
@@ -120,6 +123,28 @@ def tool_plot(input_str: str) -> str:
             sns.histplot(data=df, x=x_col, hue=hue_col, kde=True)
             if not title:
                 title = f"Distribution of {x_col}"
+            
+            # Add data summary for histogram
+            col_data = df[x_col].dropna()
+            if col_data.dtype in ['int64', 'float64']:
+                data_summary = {
+                    "column": x_col,
+                    "count": int(len(col_data)),
+                    "mean": round(float(col_data.mean()), 2),
+                    "median": round(float(col_data.median()), 2),
+                    "std": round(float(col_data.std()), 2),
+                    "min": round(float(col_data.min()), 2),
+                    "max": round(float(col_data.max()), 2)
+                }
+            else:
+                # Categorical column
+                value_counts = col_data.value_counts().to_dict()
+                data_summary = {
+                    "column": x_col,
+                    "count": int(len(col_data)),
+                    "unique_values": int(col_data.nunique()),
+                    "frequencies": {str(k): int(v) for k, v in list(value_counts.items())[:10]}
+                }
                 
         elif plot_type == "bar":
             if not x_col or not y_col:
@@ -127,6 +152,15 @@ def tool_plot(input_str: str) -> str:
             sns.barplot(data=df, x=x_col, y=y_col, hue=hue_col)
             if not title:
                 title = f"{y_col} by {x_col}"
+            
+            # Add data summary for bar plot
+            grouped = df.groupby(x_col)[y_col].agg(['mean', 'count']).round(2)
+            data_summary = {
+                "x_column": x_col,
+                "y_column": y_col,
+                "groups": {str(k): {"mean": float(v['mean']), "count": int(v['count'])} 
+                          for k, v in grouped.iterrows()}
+            }
                 
         elif plot_type == "boxplot":
             if not y_col:
@@ -134,6 +168,25 @@ def tool_plot(input_str: str) -> str:
             sns.boxplot(data=df, x=x_col, y=y_col, hue=hue_col)
             if not title:
                 title = f"Box Plot of {y_col}" + (f" by {x_col}" if x_col else "")
+            
+            # Add data summary for boxplot
+            col_data = df[y_col].dropna()
+            q1 = col_data.quantile(0.25)
+            q3 = col_data.quantile(0.75)
+            iqr = q3 - q1
+            data_summary = {
+                "column": y_col,
+                "count": int(len(col_data)),
+                "min": round(float(col_data.min()), 2),
+                "q1": round(float(q1), 2),
+                "median": round(float(col_data.median()), 2),
+                "q3": round(float(q3), 2),
+                "max": round(float(col_data.max()), 2),
+                "iqr": round(float(iqr), 2),
+                "outliers_count": int(((col_data < (q1 - 1.5 * iqr)) | (col_data > (q3 + 1.5 * iqr))).sum())
+            }
+            if x_col:
+                data_summary["grouped_by"] = x_col
                 
         elif plot_type == "scatter":
             if not x_col or not y_col:
@@ -141,6 +194,16 @@ def tool_plot(input_str: str) -> str:
             sns.scatterplot(data=df, x=x_col, y=y_col, hue=hue_col, alpha=0.6)
             if not title:
                 title = f"{y_col} vs {x_col}"
+            
+            # Add data summary for scatter plot
+            plot_data = df[[x_col, y_col]].dropna()
+            correlation = plot_data[x_col].corr(plot_data[y_col])
+            data_summary = {
+                "x_column": x_col,
+                "y_column": y_col,
+                "count": int(len(plot_data)),
+                "correlation": round(float(correlation), 3)
+            }
                 
         elif plot_type == "line":
             if not x_col or not y_col:
@@ -148,6 +211,16 @@ def tool_plot(input_str: str) -> str:
             sns.lineplot(data=df, x=x_col, y=y_col, hue=hue_col)
             if not title:
                 title = f"{y_col} over {x_col}"
+            
+            # Add data summary for line plot
+            plot_data = df[[x_col, y_col]].dropna()
+            data_summary = {
+                "x_column": x_col,
+                "y_column": y_col,
+                "count": int(len(plot_data)),
+                "y_mean": round(float(plot_data[y_col].mean()), 2),
+                "y_range": [round(float(plot_data[y_col].min()), 2), round(float(plot_data[y_col].max()), 2)]
+            }
                 
         elif plot_type == "countplot":
             if not x_col:
@@ -155,6 +228,16 @@ def tool_plot(input_str: str) -> str:
             sns.countplot(data=df, x=x_col, hue=hue_col)
             if not title:
                 title = f"Count of {x_col}"
+            
+            # Add data summary for countplot
+            col_data = df[x_col].dropna()
+            value_counts = col_data.value_counts().to_dict()
+            data_summary = {
+                "column": x_col,
+                "total_count": int(len(col_data)),
+                "unique_values": int(col_data.nunique()),
+                "frequencies": {str(k): int(v) for k, v in value_counts.items()}
+            }
                 
         elif plot_type == "violin":
             if not y_col:
@@ -162,6 +245,19 @@ def tool_plot(input_str: str) -> str:
             sns.violinplot(data=df, x=x_col, y=y_col, hue=hue_col)
             if not title:
                 title = f"Violin Plot of {y_col}" + (f" by {x_col}" if x_col else "")
+            
+            # Add data summary for violin plot
+            col_data = df[y_col].dropna()
+            data_summary = {
+                "column": y_col,
+                "count": int(len(col_data)),
+                "mean": round(float(col_data.mean()), 2),
+                "median": round(float(col_data.median()), 2),
+                "std": round(float(col_data.std()), 2),
+                "range": [round(float(col_data.min()), 2), round(float(col_data.max()), 2)]
+            }
+            if x_col:
+                data_summary["grouped_by"] = x_col
                 
         elif plot_type == "heatmap":
             # Select columns for correlation heatmap
@@ -209,6 +305,23 @@ def tool_plot(input_str: str) -> str:
                     title = f"Correlation Heatmap ({', '.join(columns_list)})"
                 else:
                     title = "Correlation Heatmap"
+            
+            # Add data summary for heatmap
+            # Find strongest positive and negative correlations
+            corr_values = []
+            for i in range(len(corr.columns)):
+                for j in range(i+1, len(corr.columns)):
+                    corr_values.append({
+                        "pair": f"{corr.columns[i]} - {corr.columns[j]}",
+                        "correlation": round(float(corr.iloc[i, j]), 3)
+                    })
+            corr_values.sort(key=lambda x: abs(x["correlation"]), reverse=True)
+            
+            data_summary = {
+                "columns": list(corr.columns),
+                "num_columns": len(corr.columns),
+                "strongest_correlations": corr_values[:5] if corr_values else []
+            }
                 
         elif plot_type == "pairplot":
             # For pairplot, we need to save differently
@@ -230,10 +343,19 @@ def tool_plot(input_str: str) -> str:
             pairplot.savefig(filepath, dpi=100, bbox_inches='tight')
             plt.close()
             
+            # Add data summary for pairplot
+            plot_df = df[cols_to_plot].select_dtypes(include=['number'])
+            data_summary = {
+                "columns": list(plot_df.columns),
+                "num_columns": len(plot_df.columns),
+                "total_observations": int(len(plot_df))
+            }
+            
             return json.dumps({
                 "success": True,
                 "plot_path": filepath,
                 "plot_url": f"/plots/{filename}",
+                "data_summary": data_summary,
                 "message": f"Pairplot generated successfully for columns: {', '.join(cols_to_plot)}"
             })
         else:
@@ -263,6 +385,7 @@ def tool_plot(input_str: str) -> str:
             "success": True,
             "plot_path": filepath,
             "plot_url": f"/plots/{filename}",
+            "data_summary": data_summary,
             "message": message
         })
         
